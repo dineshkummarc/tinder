@@ -163,11 +163,12 @@ public static class Parser
 		pratt.Get(TokenKind.FloatLit).prefixParser = ParseFloatExpr;
 		
 		// Types
-		pratt.Literal(TokenKind.Void, (Token token) => new IdentExpr { location = token.location, name = token.text });
-		pratt.Literal(TokenKind.Bool, (Token token) => new IdentExpr { location = token.location, name = token.text });
-		pratt.Literal(TokenKind.Int, (Token token) => new IdentExpr { location = token.location, name = token.text });
-		pratt.Literal(TokenKind.Float, (Token token) => new IdentExpr { location = token.location, name = token.text });
-		pratt.Literal(TokenKind.String, (Token token) => new IdentExpr { location = token.location, name = token.text });
+		pratt.Literal(TokenKind.Void, (Token token) => new TypeExpr { location = token.location, type = new VoidType() });
+		pratt.Literal(TokenKind.Bool, ParsePrimType);
+		pratt.Literal(TokenKind.Int, ParsePrimType);
+		pratt.Literal(TokenKind.Float, ParsePrimType);
+		pratt.Literal(TokenKind.Char, ParsePrimType);
+		pratt.Literal(TokenKind.String, ParsePrimType);
 		
 		// Infix operators
 		foreach (OperatorInfo<BinaryOp> info in Constants.binaryOperators)
@@ -221,6 +222,14 @@ public static class Parser
 		return new FloatExpr {
 			location = token.location,
 			value = value
+		};
+	}
+	
+	private static TypeExpr ParsePrimType(Token token)
+	{
+		return new TypeExpr {
+			location = token.location,
+			type = new PrimType { kind = Constants.tokenToPrim[token.kind] }
 		};
 	}
 
@@ -336,7 +345,7 @@ public static class Parser
 		if (context.Peek(TokenKind.External)) {
 			return ParseExternalStmt(context);
 		}
-		if (context.Peek(TokenKind.EndOfFile)) {
+		if (context.Peek(TokenKind.Class)) {
 			return ParseClassDef(context);
 		}
 		

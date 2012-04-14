@@ -28,8 +28,8 @@ public class OperatorInfo<T>
 public class OperatorList<T> : IEnumerable
 {
 	public List<OperatorInfo<T>> list = new List<OperatorInfo<T>>();
-	public Dictionary<TokenKind, T> kindToEnum = new Dictionary<TokenKind, T>();
-	public Dictionary<T, TokenKind> enumToKind = new Dictionary<T, TokenKind>();
+	public Dictionary<TokenKind, T> tokenToEnum = new Dictionary<TokenKind, T>();
+	public Dictionary<T, TokenKind> enumToToken = new Dictionary<T, TokenKind>();
 	
 	public IEnumerator GetEnumerator()
 	{
@@ -39,8 +39,8 @@ public class OperatorList<T> : IEnumerable
 	public void Add(TokenKind kind, int precedence, T op)
 	{
 		list.Add(new OperatorInfo<T> { kind = kind, precedence = precedence, op = op });
- 		kindToEnum[kind] = op;
-		enumToKind[op] = kind;
+		tokenToEnum[kind] = op;
+		enumToToken[op] = kind;
 	}
 }
 
@@ -81,7 +81,7 @@ public static class Constants
 	};
 	
 	// Map all symbols, operators, and keywords to the equivalent TokenKind
-	public static readonly Dictionary<string, TokenKind> stringToKind = new Dictionary<string, TokenKind> {
+	public static readonly Dictionary<string, TokenKind> stringToToken = new Dictionary<string, TokenKind> {
 		{ "(", TokenKind.LParen },
 		{ ")", TokenKind.RParen },
 		{ "[", TokenKind.LBracket },
@@ -122,11 +122,21 @@ public static class Constants
 		{ "bool", TokenKind.Bool },
 		{ "int", TokenKind.Int },
 		{ "float", TokenKind.Float },
+		{ "char", TokenKind.Char },
 		{ "string", TokenKind.String },
 	};
 	
-	// The inverse mapping of stringToKind
-	public static readonly Dictionary<TokenKind, string> kindToString = stringToKind.Inverse();
+	public static readonly Dictionary<TokenKind, PrimKind> tokenToPrim = new Dictionary<TokenKind, PrimKind> {
+		{ TokenKind.Bool, PrimKind.Bool },
+		{ TokenKind.Int, PrimKind.Int },
+		{ TokenKind.Float, PrimKind.Float },
+		{ TokenKind.Char, PrimKind.Char },
+		{ TokenKind.String, PrimKind.String },
+	};
+	
+	// Inverse mappings
+	public static readonly Dictionary<TokenKind, string> tokenToString = stringToToken.Inverse();
+	public static readonly Dictionary<PrimKind, TokenKind> primToToken = tokenToPrim.Inverse();
 }
 
 public static class Utility
@@ -176,21 +186,59 @@ public static class Utility
 	
 	public static UnaryOp AsUnaryOp(this TokenKind kind)
 	{
-		return Constants.unaryOperators.kindToEnum[kind];
+		return Constants.unaryOperators.tokenToEnum[kind];
 	}
 	
 	public static BinaryOp AsBinaryOp(this TokenKind kind)
 	{
-		return Constants.binaryOperators.kindToEnum[kind];
+		return Constants.binaryOperators.tokenToEnum[kind];
 	}
 	
 	public static string AsString(this UnaryOp op)
 	{
-		return Constants.kindToString[Constants.unaryOperators.enumToKind[op]];
+		return Constants.tokenToString[Constants.unaryOperators.enumToToken[op]];
 	}
 	
 	public static string AsString(this BinaryOp op)
 	{
-		return Constants.kindToString[Constants.binaryOperators.enumToKind[op]];
+		return Constants.tokenToString[Constants.binaryOperators.enumToToken[op]];
+	}
+	
+	public static bool Matches(this List<Type> a, List<Type> b)
+	{
+		if (a.Count != b.Count) {
+			return false;
+		}
+		for (int i = 0; i < a.Count; i++) {
+			if (!a[i].EqualsType(b[i])) {
+				return false;
+			}
+		}
+		return true;
+	}
+	
+	public static bool IsBool(this Type type)
+	{
+		return type is PrimType && ((PrimType)type).kind == PrimKind.Bool;
+	}
+	
+	public static bool IsInt(this Type type)
+	{
+		return type is PrimType && ((PrimType)type).kind == PrimKind.Int;
+	}
+	
+	public static bool IsFloat(this Type type)
+	{
+		return type is PrimType && ((PrimType)type).kind == PrimKind.Float;
+	}
+	
+	public static bool IsChar(this Type type)
+	{
+		return type is PrimType && ((PrimType)type).kind == PrimKind.Char;
+	}
+	
+	public static bool IsString(this Type type)
+	{
+		return type is PrimType && ((PrimType)type).kind == PrimKind.String;
 	}
 }

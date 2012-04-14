@@ -61,6 +61,7 @@ public enum TokenKind
 	Bool,
 	Int,
 	Float,
+	Char,
 	String,
 	
 	// Literals
@@ -247,7 +248,7 @@ public class Tokenizer
 			} else {
 				// Check for symbols
 				i--;
-				foreach (KeyValuePair<string, TokenKind> pair in Constants.stringToKind) {
+				foreach (KeyValuePair<string, TokenKind> pair in Constants.stringToToken) {
 					if (i + pair.Key.Length <= text.Length && text.IndexOf(pair.Key, i, pair.Key.Length) == i) {
 						i += pair.Key.Length;
 						token.kind = pair.Value;
@@ -303,9 +304,9 @@ public class Tokenizer
 				// Remove consecutive newlines (generated around comments)
 				token.text += tokens[i + 1].text;
 				tokens.RemoveAt(i + 1);
-			} else if (token.kind == TokenKind.Identifier && Constants.stringToKind.ContainsKey(token.text)) {
+			} else if (token.kind == TokenKind.Identifier && Constants.stringToToken.ContainsKey(token.text)) {
 				// Convert identifiers to keywords
-				token.kind = Constants.stringToKind[token.text];
+				token.kind = Constants.stringToToken[token.text];
 			} else if (token.kind == TokenKind.Backslash && i + 1 < tokens.Count && tokens[i + 1].kind == TokenKind.Newline) {
 				// Remove escaped newlines
 				tokens.RemoveRange(i, 2);

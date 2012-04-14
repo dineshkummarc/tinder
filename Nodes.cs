@@ -204,6 +204,16 @@ public class IdentExpr : Expr
 	}
 }
 
+public class TypeExpr : Expr
+{
+	public Type type;
+	
+	public override T Accept<T>(Visitor<T> visitor)
+	{
+		return visitor.Visit(this);
+	}
+}
+
 public enum UnaryOp
 {
 	Not,
@@ -329,6 +339,8 @@ public abstract class Visitor<T>
 	
 	public abstract T Visit(IdentExpr node);
 	
+	public abstract T Visit(TypeExpr node);
+	
 	public abstract T Visit(UnaryExpr node);
 	
 	public abstract T Visit(BinaryExpr node);
@@ -450,6 +462,11 @@ public class DefaultVisitor : Visitor<Null>
 	}
 	
 	public override Null Visit(IdentExpr node)
+	{
+		return null;
+	}
+	
+	public override Null Visit(TypeExpr node)
 	{
 		return null;
 	}

@@ -127,6 +127,7 @@ public class InteractiveServer
 				module = Parser.Parse(log, tokens, "<stdin>");
 				if (module != null) {
 					appendText(doc, xmlTree, module.Accept(new NodeToStringVisitor()));
+					Compiler.Compile(log, module);
 				}
 			}
 		} catch (Exception e) {
@@ -315,6 +316,11 @@ public class NodeToStringVisitor : Visitor<string>
 	public override string Visit(IdentExpr node)
 	{
 		return "IdentExpr { name = " + node.name + " }";
+	}
+	
+	public override string Visit(TypeExpr node)
+	{
+		return "TypeExpr { type = " + node.type + " }";
 	}
 	
 	public override string Visit(UnaryExpr node)
