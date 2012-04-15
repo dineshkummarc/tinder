@@ -55,6 +55,7 @@ public enum TokenKind
 	As,
 	External,
 	Null,
+	This,
 	True,
 	False,
 	Void,

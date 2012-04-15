@@ -154,6 +154,7 @@ public static class Parser
 	{
 		// Literals
 		pratt.Literal(TokenKind.Null, (Token token) => new NullExpr { location = token.location });
+		pratt.Literal(TokenKind.This, (Token token) => new ThisExpr { location = token.location });
 		pratt.Literal(TokenKind.True, (Token token) => new BoolExpr { location = token.location, value = true });
 		pratt.Literal(TokenKind.False, (Token token) => new BoolExpr { location = token.location, value = false });
 		pratt.Literal(TokenKind.StringLit, (Token token) => new StringExpr { location = token.location, value = token.text });

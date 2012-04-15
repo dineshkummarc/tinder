@@ -67,6 +67,11 @@ public static class ErrorMessages
 	{
 		log.Error(location, "multiple ambiguous overloads that match arguments \"" + argTypes.AsString() + "\"");
 	}
+	
+	public static void ErrorThisOutsideClass(this Log log, Location location)
+	{
+		log.Error(location, "\"this\" used outside class definition");
+	}
 }
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -99,8 +104,8 @@ public class StructuralCheckPass : DefaultVisitor
 		}
 	}
 	
-	public Log log;
-	public Stack<State> stack;
+	private Log log;
+	private Stack<State> stack;
 	
 	public StructuralCheckPass(Log log)
 	{
@@ -221,7 +226,7 @@ public class StructuralCheckPass : DefaultVisitor
 
 public class DefineSymbolsPass : DefaultVisitor
 {
-	public Log log;
+	private Log log;
 	
 	public DefineSymbolsPass(Log log)
 	{
@@ -361,7 +366,8 @@ public class ComputeSymbolTypesPass : DefaultVisitor
 
 public class ComputeTypesPass : DefaultVisitor
 {
-	protected Log log;
+	private Log log;
+	private ClassType thisType;
 	
 	public ComputeTypesPass(Log log)
 	{
@@ -374,6 +380,23 @@ public class ComputeTypesPass : DefaultVisitor
 		return null;
 	}
 	
+	public override Null Visit(NullExpr node)
+	{
+		node.computedType = new NullType();
+		return null;
+	}
+
+	public override Null Visit(ThisExpr node)
+	{
+		node.computedType = new ErrorType();
+		if (thisType != null) {
+			node.computedType = thisType;
+		} else {
+			log.ErrorThisOutsideClass(node.location);
+		}
+		return null;
+	}
+
 	public override Null Visit(BoolExpr node)
 	{
 		node.computedType = new PrimType { kind = PrimKind.Bool };
@@ -398,12 +421,6 @@ public class ComputeTypesPass : DefaultVisitor
 		return null;
 	}
 	
-	public override Null Visit(NullExpr node)
-	{
-		node.computedType = new NullType();
-		return null;
-	}
-
 	public override Null Visit(IdentExpr node)
 	{
 		node.computedType = new ErrorType();
@@ -528,6 +545,15 @@ public class ComputeTypesPass : DefaultVisitor
 				}
 			}
 		}
+		return null;
+	}
+	
+	public override Null Visit(ClassDef node)
+	{
+		ClassType old = thisType;
+		thisType = new ClassType { def = node };
+		base.Visit(node);
+		thisType = old;
 		return null;
 	}
 	

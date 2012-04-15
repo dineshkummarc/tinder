@@ -283,6 +283,11 @@ public class NodeToStringVisitor : Visitor<string>
 		return Wrap("ClassDef", fields);
 	}
 	
+	public override string Visit(ThisExpr node)
+	{
+		return "ThisExpr {}";
+	}
+	
 	public override string Visit(NullExpr node)
 	{
 		return "NullExpr {}";

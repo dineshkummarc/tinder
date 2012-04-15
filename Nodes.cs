@@ -145,6 +145,14 @@ public class NullExpr : Expr
 	}
 }
 
+public class ThisExpr : Expr
+{
+	public override T Accept<T>(Visitor<T> visitor)
+	{
+		return visitor.Visit(this);
+	}
+}
+
 public class BoolExpr : Expr
 {
 	public bool value;
@@ -319,6 +327,8 @@ public abstract class Visitor<T>
 	
 	public abstract T Visit(NullExpr node);
 
+	public abstract T Visit(ThisExpr node);
+
 	public abstract T Visit(BoolExpr node);
 	
 	public abstract T Visit(IntExpr node);
@@ -427,6 +437,11 @@ public class DefaultVisitor : Visitor<Null>
 	}
 	
 	public override Null Visit(NullExpr node)
+	{
+		return null;
+	}
+
+	public override Null Visit(ThisExpr node)
 	{
 		return null;
 	}
