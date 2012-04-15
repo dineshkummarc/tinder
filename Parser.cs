@@ -158,7 +158,7 @@ public static class Parser
 		pratt.Literal(TokenKind.False, (Token token) => new BoolExpr { location = token.location, value = false });
 		pratt.Literal(TokenKind.StringLit, (Token token) => new StringExpr { location = token.location, value = token.text });
 		pratt.Literal(TokenKind.Identifier, (Token token) => new IdentExpr { location = token.location, name = token.text });
-		pratt.Literal(TokenKind.CharLit, (Token token) => new CharExpr { location = token.location, value = token.text[0] });
+		pratt.Literal(TokenKind.CharLit, (Token token) => new IntExpr { location = token.location, value = token.text[0] });
 		pratt.Get(TokenKind.IntLit).prefixParser = ParseIntExpr;
 		pratt.Get(TokenKind.FloatLit).prefixParser = ParseFloatExpr;
 		
@@ -167,7 +167,6 @@ public static class Parser
 		pratt.Literal(TokenKind.Bool, ParsePrimType);
 		pratt.Literal(TokenKind.Int, ParsePrimType);
 		pratt.Literal(TokenKind.Float, ParsePrimType);
-		pratt.Literal(TokenKind.Char, ParsePrimType);
 		pratt.Literal(TokenKind.String, ParsePrimType);
 		
 		// Infix operators

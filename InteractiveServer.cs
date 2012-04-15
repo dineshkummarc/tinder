@@ -126,8 +126,8 @@ public class InteractiveServer
 			if (log.errors.Count == 0) {
 				module = Parser.Parse(log, tokens, "<stdin>");
 				if (module != null) {
-					appendText(doc, xmlTree, module.Accept(new NodeToStringVisitor()));
 					Compiler.Compile(log, module);
+					appendText(doc, xmlTree, module.Accept(new NodeToStringVisitor()));
 				}
 			}
 		} catch (Exception e) {
@@ -301,11 +301,6 @@ public class NodeToStringVisitor : Visitor<string>
 	public override string Visit(FloatExpr node)
 	{
 		return "FloatExpr { value = " + node.value + " }";
-	}
-	
-	public override string Visit(CharExpr node)
-	{
-		return "CharExpr { value = " + node.value.ToQuotedChar() + " }";
 	}
 	
 	public override string Visit(StringExpr node)

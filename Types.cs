@@ -28,7 +28,6 @@ public enum PrimKind
 	Bool,
 	Int,
 	Float,
-	Char,
 	String,
 }
 
@@ -54,12 +53,13 @@ public class FuncType : Type
 	
 	public override bool EqualsType(Type other)
 	{
-		return other is FuncType && returnType.EqualsType((FuncType)other) && argTypes.Matches(((FuncType)other).argTypes);
+		return other is FuncType && returnType.EqualsType((FuncType)other) &&
+			argTypes.MatchesExactly(((FuncType)other).argTypes);
 	}
 	
 	public override string ToString()
 	{
-		return returnType + " function(" + string.Join(", ", argTypes.ConvertAll(x => x.ToString()).ToArray()) + ")";
+		return returnType + " function" + argTypes.AsString();
 	}
 }
 
@@ -105,6 +105,19 @@ public class OverloadedFuncType : Type
 	public override string ToString()
 	{
 		return "<overloaded function>";
+	}
+}
+
+public class NullType : Type
+{
+	public override bool EqualsType(Type other)
+	{
+		return other is NullType;
+	}
+	
+	public override string ToString()
+	{
+		return "<null>";
 	}
 }
 

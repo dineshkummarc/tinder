@@ -122,14 +122,14 @@ public static class Constants
 		{ "bool", TokenKind.Bool },
 		{ "int", TokenKind.Int },
 		{ "float", TokenKind.Float },
-		{ "char", TokenKind.Char },
 		{ "string", TokenKind.String },
 	};
+	
+	// Map tokens for primitive types to the equivalent PrimKind
 	public static readonly Dictionary<TokenKind, PrimKind> tokenToPrim = new Dictionary<TokenKind, PrimKind> {
 		{ TokenKind.Bool, PrimKind.Bool },
 		{ TokenKind.Int, PrimKind.Int },
 		{ TokenKind.Float, PrimKind.Float },
-		{ TokenKind.Char, PrimKind.Char },
 		{ TokenKind.String, PrimKind.String },
 	};
 	
@@ -203,7 +203,12 @@ public static class Utility
 		return Constants.tokenToString[Constants.binaryOperators.enumToToken[op]];
 	}
 	
-	public static bool Matches(this List<Type> a, List<Type> b)
+	public static bool CanImplicitlyConvertTo(this Type from, Type to)
+	{
+		return (from.IsInt() && to.IsFloat()) || (from is NullType && to is ClassType);
+	}
+	
+	public static bool MatchesExactly(this List<Type> a, List<Type> b)
 	{
 		if (a.Count != b.Count) {
 			return false;
@@ -214,6 +219,24 @@ public static class Utility
 			}
 		}
 		return true;
+	}
+	
+	public static bool MatchesWithImplicitConversions(this List<Type> from, List<Type> to)
+	{
+		if (from.Count != to.Count) {
+			return false;
+		}
+		for (int i = 0; i < from.Count; i++) {
+			if (!from[i].EqualsType(to[i]) && !from[i].CanImplicitlyConvertTo(to[i])) {
+				return false;
+			}
+		}
+		return true;
+	}
+	
+	public static string AsString(this List<Type> argTypes)
+	{
+		return "(" + string.Join(", ", argTypes.ConvertAll(arg => arg.ToString()).ToArray()) + ")";
 	}
 	
 	public static bool IsBool(this Type type)
@@ -231,11 +254,6 @@ public static class Utility
 		return type is PrimType && ((PrimType)type).kind == PrimKind.Float;
 	}
 	
-	public static bool IsChar(this Type type)
-	{
-		return type is PrimType && ((PrimType)type).kind == PrimKind.Char;
-	}
-	
 	public static bool IsString(this Type type)
 	{
 		return type is PrimType && ((PrimType)type).kind == PrimKind.String;
@@ -243,6 +261,6 @@ public static class Utility
 	
 	public static bool IsNumeric(this Type type)
 	{
-		return type.IsInt() || type.IsFloat() || type.IsChar();
+		return type.IsInt() || type.IsFloat();
 	}
 }

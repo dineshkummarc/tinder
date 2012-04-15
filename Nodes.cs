@@ -175,16 +175,6 @@ public class FloatExpr : Expr
 	}
 }
 
-public class CharExpr : Expr
-{
-	public int value;
-	
-	public override T Accept<T>(Visitor<T> visitor)
-	{
-		return visitor.Visit(this);
-	}
-}
-
 public class StringExpr : Expr
 {
 	public string value;
@@ -290,6 +280,7 @@ public class MemberExpr : Expr
 {
 	public Expr obj;
 	public string name;
+	public Symbol symbol;
 	
 	public override T Accept<T>(Visitor<T> visitor)
 	{
@@ -334,8 +325,6 @@ public abstract class Visitor<T>
 
 	public abstract T Visit(FloatExpr node);
 
-	public abstract T Visit(CharExpr node);
-	
 	public abstract T Visit(StringExpr node);
 	
 	public abstract T Visit(IdentExpr node);
@@ -457,11 +446,6 @@ public class DefaultVisitor : Visitor<Null>
 		return null;
 	}
 
-	public override Null Visit(CharExpr node)
-	{
-		return null;
-	}
-	
 	public override Null Visit(StringExpr node)
 	{
 		return null;

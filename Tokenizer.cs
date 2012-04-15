@@ -61,7 +61,6 @@ public enum TokenKind
 	Bool,
 	Int,
 	Float,
-	Char,
 	String,
 	
 	// Literals

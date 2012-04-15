@@ -31,11 +31,6 @@ public static class ErrorMessages
 		log.Error(location, "reference to undefined symbol \"" + name + "\"");
 	}
 	
-	public static void ErrorNoTypeContext(this Log log, Location location, string name)
-	{
-		log.Error(location, "cannot deduce the type of " + name + " from the surrounding context");
-	}
-	
 	public static void ErrorNotType(this Log log, Location location, Type type)
 	{
 		log.Error(location, "value of type \"" + type + "\" is not a type");
@@ -44,6 +39,33 @@ public static class ErrorMessages
 	public static void ErrorTypeMismatch(this Log log, Location location, Type expected, Type found)
 	{
 		log.Error(location, "expected value of type \"" + expected + "\" but found value of type \"" + found + "\"");
+	}
+	
+	public static void ErrorBinaryOpNotFound(this Log log, BinaryExpr node)
+	{
+		log.Error(node.location, "no match for operator " + node.op.AsString() + " that takes arguments \"(" +
+			node.left.computedType + ", " + node.right.computedType + ")\"");
+	}
+	
+	public static void ErrorInvalidCast(this Log log, Location location, Type from, Type to)
+	{
+		log.Error(location, "cannot cast value of type \"" + from + "\" to \"" + to + "\"");
+	}
+	
+	public static void ErrorBadMemberAccess(this Log log, MemberExpr node)
+	{
+		log.Error(node.location, "cannot access member \"" + node.name + "\" on value of type \"" +
+			node.obj.computedType + "\"");
+	}
+
+	public static void ErrorCallNotFound(this Log log, Location location, Type funcType, List<Type> argTypes)
+	{
+		log.Error(location, "cannot call value of type \"" + funcType + "\" with arguments \"" + argTypes.AsString() + "\"");
+	}
+	
+	public static void ErrorMultipleOverloadsFound(this Log log, Location location, List<Type> argTypes)
+	{
+		log.Error(location, "multiple ambiguous overloads that match arguments \"" + argTypes.AsString() + "\"");
 	}
 }
 
@@ -276,6 +298,61 @@ public class DefineSymbolsPass : DefaultVisitor
 		
 		return null;
 	}
+	
+	public override Null Visit(ExternalStmt node)
+	{
+		// External statements don't have their own scope
+		node.block.scope = scope;
+		base.Visit(node);
+		return null;
+	}
+}
+
+////////////////////////////////////////////////////////////////////////////////
+// class ComputeSymbolTypesPass
+////////////////////////////////////////////////////////////////////////////////
+
+// Compute the type of all expressions that are expected to contain types, then
+// use these to set symbol types. This way the types of all symbols will be
+// known when we compute the types of the other expressions in a later pass.
+public class ComputeSymbolTypesPass : DefaultVisitor
+{
+	private Log log;
+	private ComputeTypesPass helper;
+	
+	public ComputeSymbolTypesPass(Log log)
+	{
+		this.log = log;
+		helper = new ComputeTypesPass(log);
+	}
+	
+	public Type GetInstanceType(Expr node)
+	{
+		helper.scope = scope;
+		node.Accept(helper);
+		if (node.computedType is MetaType) {
+			return ((MetaType)node.computedType).instanceType;
+		}
+		log.ErrorNotType(node.location, node.computedType);
+		return new ErrorType();
+	}
+	
+	public override Null Visit(VarDef node)
+	{
+		base.Visit(node);
+		node.symbol.type = GetInstanceType(node.type);
+		return null;
+	}
+	
+	public override Null Visit(FuncDef node)
+	{
+		base.Visit(node);
+		node.symbol.type = new FuncType {
+			returnType = GetInstanceType(node.returnType),
+			argTypes = node.argDefs.ConvertAll(arg => GetInstanceType(arg.type))
+		};
+		return null;
+	}
 }
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -315,12 +392,6 @@ public class ComputeTypesPass : DefaultVisitor
 		return null;
 	}
 
-	public override Null Visit(CharExpr node)
-	{
-		node.computedType = new PrimType { kind = PrimKind.Char };
-		return null;
-	}
-	
 	public override Null Visit(StringExpr node)
 	{
 		node.computedType = new PrimType { kind = PrimKind.String };
@@ -329,8 +400,7 @@ public class ComputeTypesPass : DefaultVisitor
 	
 	public override Null Visit(NullExpr node)
 	{
-		node.computedType = new ErrorType();
-		log.ErrorNoTypeContext(node.location, "null");
+		node.computedType = new NullType();
 		return null;
 	}
 
@@ -350,6 +420,9 @@ public class ComputeTypesPass : DefaultVisitor
 	{
 		node.computedType = new ErrorType();
 		base.Visit(node);
+		if (!SetUpBinaryOp(node)) {
+			log.ErrorBinaryOpNotFound(node);
+		}
 		return null;
 	}
 
@@ -357,6 +430,47 @@ public class ComputeTypesPass : DefaultVisitor
 	{
 		node.computedType = new ErrorType();
 		base.Visit(node);
+		
+		// Try to resolve overloaded functions
+		Type type = node.func.computedType;
+		List<Type> argTypes = node.args.ConvertAll(arg => arg.computedType);
+		if (type is OverloadedFuncType) {
+			OverloadedFuncType overloadedType = (OverloadedFuncType)type;
+			List<FuncType> exactMatches = new List<FuncType>();
+			List<FuncType> implicitMatches = new List<FuncType>();
+			
+			// Try to mach each overload
+			foreach (Symbol symbol in overloadedType.overloads) {
+				FuncType funcType = (FuncType)symbol.type;
+				if (argTypes.MatchesExactly(funcType.argTypes)) {
+					exactMatches.Add(funcType);
+				} else if (argTypes.MatchesWithImplicitConversions(funcType.argTypes)) {
+					implicitMatches.Add(funcType);
+				}
+			}
+			
+			// Pick the best-matching overload
+			List<FuncType> matches = (exactMatches.Count > 0) ? exactMatches : implicitMatches;
+			if (matches.Count > 1) {
+				log.ErrorMultipleOverloadsFound(node.location, argTypes);
+			} else if (matches.Count == 1) {
+				type = matches[0];
+			}
+		}
+		
+		// Call the function if there is one, inserting implicit casts as appropriate
+		if (type is FuncType && argTypes.MatchesWithImplicitConversions(((FuncType)type).argTypes)) {
+			FuncType funcType = (FuncType)type;
+			for (int i = 0; i < funcType.argTypes.Count; i++) {
+				if (!node.args[i].computedType.EqualsType(funcType.argTypes[i])) {
+					node.args[i] = InsertCast(node.args[i], funcType.argTypes[i]);
+				}
+			}
+			node.computedType = funcType.returnType;
+		} else {
+			log.ErrorCallNotFound(node.location, type, argTypes);
+		}
+		
 		return null;
 	}
 	
@@ -364,6 +478,19 @@ public class ComputeTypesPass : DefaultVisitor
 	{
 		node.computedType = new ErrorType();
 		base.Visit(node);
+		
+		// Check that the cast is valid
+		if (!(node.target.computedType is MetaType)) {
+			log.ErrorNotType(node.location, node.target.computedType);
+		} else {
+			Type targetType = ((MetaType)node.target.computedType).instanceType;
+			if (!IsValidCast(node.value.computedType, targetType)) {
+				log.ErrorInvalidCast(node.value.location, node.value.computedType, targetType);
+			} else {
+				node.computedType = targetType;
+			}
+		}
+		
 		return null;
 	}
 	
@@ -371,6 +498,18 @@ public class ComputeTypesPass : DefaultVisitor
 	{
 		node.computedType = new ErrorType();
 		base.Visit(node);
+		
+		if (node.obj.computedType is ClassType) {
+			node.symbol = ((ClassType)node.obj.computedType).def.block.scope.Lookup(node.name);
+			if (node.symbol == null) {
+				log.ErrorBadMemberAccess(node);
+			} else {
+				node.computedType = node.symbol.type;
+			}
+		} else {
+			log.ErrorBadMemberAccess(node);
+		}
+		
 		return null;
 	}
 	
@@ -381,11 +520,107 @@ public class ComputeTypesPass : DefaultVisitor
 			log.ErrorNotType(node.type.location, node.type.computedType);
 		} else {
 			node.symbol.type = ((MetaType)node.type.computedType).instanceType;
-			if (node.value != null && !node.symbol.type.EqualsType(node.value.computedType)) {
-				log.ErrorTypeMismatch(node.location, node.symbol.type, node.value.computedType);
+			if (node.value != null && !node.value.computedType.EqualsType(node.symbol.type)) {
+				if (node.value.computedType.CanImplicitlyConvertTo(node.symbol.type)) {
+					node.value = InsertCast(node.value, node.symbol.type);
+				} else {
+					log.ErrorTypeMismatch(node.location, node.symbol.type, node.value.computedType);
+				}
 			}
 		}
 		return null;
+	}
+	
+	private static Expr InsertCast(Expr value, Type target)
+	{
+		Type type = new MetaType { instanceType = target };
+		return new CastExpr {
+			location = value.location,
+			value = value,
+			target = new TypeExpr { type = type, computedType = type },
+			computedType = target
+		};
+	}
+	
+	private bool IsValidCast(Type from, Type to)
+	{
+		return from.EqualsType(to) || from.CanImplicitlyConvertTo(to) || (from.IsNumeric() && to.IsNumeric());
+	}
+	
+	private bool SetUpBinaryOpHelper(BinaryExpr node, bool resultIsBool)
+	{
+		Type left = node.left.computedType;
+		Type right = node.right.computedType;
+		
+		if (left.EqualsType(right)) {
+			node.computedType = resultIsBool ? new PrimType { kind = PrimKind.Bool } : left;
+			return true;
+		}
+		
+		if (left.CanImplicitlyConvertTo(right)) {
+			node.left = InsertCast(node.left, right);
+			node.computedType = resultIsBool ? new PrimType { kind = PrimKind.Bool } : right;
+			return true;
+		}
+		
+		if (right.CanImplicitlyConvertTo(left)) {
+			node.right = InsertCast(node.right, left);
+			node.computedType = resultIsBool ? new PrimType { kind = PrimKind.Bool } : left;
+			return true;
+		}
+		
+		return false;
+	}
+	
+	private bool SetUpBinaryOp(BinaryExpr node)
+	{
+		Type left = node.left.computedType;
+		Type right = node.right.computedType;
+		
+		switch (node.op) {
+			case BinaryOp.Assign:
+				break;
+		
+			case BinaryOp.And:
+			case BinaryOp.Or:
+				if (left.IsBool() && right.IsBool()) {
+					node.computedType = new PrimType { kind = PrimKind.Bool };
+					return true;
+				}
+				break;
+		
+			case BinaryOp.Add:
+				if (((left.IsNumeric() && right.IsNumeric()) || (left.IsString() && right.IsString())) && SetUpBinaryOpHelper(node, false)) {
+					return true;
+				}
+				break;
+				
+			case BinaryOp.Subtract:
+			case BinaryOp.Multiply:
+			case BinaryOp.Divide:
+				if (left.IsNumeric() && right.IsNumeric() && SetUpBinaryOpHelper(node, false)) {
+					return true;
+				}
+				break;
+		
+			case BinaryOp.Equal:
+			case BinaryOp.NotEqual:
+				if (SetUpBinaryOpHelper(node, true)) {
+					return true;
+				}
+				break;
+				
+			case BinaryOp.LessThan:
+			case BinaryOp.GreaterThan:
+			case BinaryOp.LessThanEqual:
+			case BinaryOp.GreaterThanEqual:
+				if (((left.IsNumeric() && right.IsNumeric()) || (left.IsString() && right.IsString())) && SetUpBinaryOpHelper(node, true)) {
+					return true;
+				}
+				break;
+		}
+		
+		return false;
 	}
 }
 
@@ -421,6 +656,7 @@ public static class Compiler
 		Pass[] passes = new Pass[] {
 			new VisitorPass<Null>(new StructuralCheckPass(log)),
 			new VisitorPass<Null>(new DefineSymbolsPass(log)),
+			new VisitorPass<Null>(new ComputeSymbolTypesPass(log)),
 			new VisitorPass<Null>(new ComputeTypesPass(log)),
 		};
 		foreach (Pass pass in passes) {
