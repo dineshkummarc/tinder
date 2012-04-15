@@ -72,6 +72,25 @@ public static class ErrorMessages
 	{
 		log.Error(location, "\"this\" used outside class definition");
 	}
+	
+	public static void ErrorVoidReturn(this Log log, Location location, bool shouldBeVoid)
+	{
+		if (shouldBeVoid) {
+			log.Error(location, "returning value from function returning void");
+		} else {
+			log.Error(location, "missing return value in non-void function");
+		}
+	}
+	
+	public static void ErrorNotAllPathsReturnValue(this Log log, Location location)
+	{
+		log.Error(location, "not all control paths return a value");
+	}
+	
+	public static void WarningDeadCode(this Log log, Location location)
+	{
+		log.Warning(location, "dead code");
+	}
 }
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -80,7 +99,7 @@ public static class ErrorMessages
 
 public class StructuralCheckPass : DefaultVisitor
 {
-	public class State
+	private class State
 	{
 		public bool inClass;
 		public bool inExternal;
@@ -114,7 +133,7 @@ public class StructuralCheckPass : DefaultVisitor
 		stack.Push(new State());
 	}
 	
-	public string NameForStmt(Stmt stmt)
+	private string NameForStmt(Stmt stmt)
 	{
 		if (stmt is IfStmt) {
 			return "if statement";
@@ -140,7 +159,7 @@ public class StructuralCheckPass : DefaultVisitor
 		return "statement";
 	}
 	
-	public State Push()
+	private State Push()
 	{
 		State state = stack.Peek().Clone();
 		stack.Push(state);
@@ -367,6 +386,7 @@ public class ComputeSymbolTypesPass : DefaultVisitor
 public class ComputeTypesPass : DefaultVisitor
 {
 	private Log log;
+	private Type returnType;
 	private ClassType thisType;
 	
 	public ComputeTypesPass(Log log)
@@ -530,6 +550,21 @@ public class ComputeTypesPass : DefaultVisitor
 		return null;
 	}
 	
+	public override Null Visit(ReturnStmt node)
+	{
+		base.Visit(node);
+		if ((node.value == null) != (returnType is VoidType)) {
+			log.ErrorVoidReturn(node.location, returnType is VoidType);
+		} else if (node.value != null && !node.value.computedType.EqualsType(returnType)) {
+			if (node.value.computedType.CanImplicitlyConvertTo(returnType)) {
+				node.value = InsertCast(node.value, returnType);
+			} else {
+				log.ErrorTypeMismatch(node.location, returnType, node.value.computedType);
+			}
+		}
+		return null;
+	}
+	
 	public override Null Visit(VarDef node)
 	{
 		base.Visit(node);
@@ -545,6 +580,15 @@ public class ComputeTypesPass : DefaultVisitor
 				}
 			}
 		}
+		return null;
+	}
+	
+	public override Null Visit(FuncDef node)
+	{
+		Type old = returnType;
+		returnType = ((FuncType)node.symbol.type).returnType;
+		base.Visit(node);
+		returnType = old;
 		return null;
 	}
 	
@@ -651,6 +695,107 @@ public class ComputeTypesPass : DefaultVisitor
 }
 
 ////////////////////////////////////////////////////////////////////////////////
+// FlowValidationPass
+////////////////////////////////////////////////////////////////////////////////
+
+public class FlowValidationPass : DefaultVisitor
+{
+	private class State
+	{
+		public bool didReturn;
+		public bool warnedDeadCode;
+		
+		public State Clone()
+		{
+			return new State {
+				didReturn = didReturn,
+				warnedDeadCode = warnedDeadCode,
+			};
+		}
+	}
+	
+	private Log log;
+	private Stack<State> stack;
+	
+	public FlowValidationPass(Log log)
+	{
+		this.log = log;
+	}
+	
+	private State Push()
+	{
+		State state = stack.Peek().Clone();
+		stack.Push(state);
+		return state;
+	}
+	
+	public override Null Visit(FuncDef node)
+	{
+		Stack<State> oldStack = stack;
+		stack = new Stack<State>();
+		
+		// Follow control flow through the function
+		stack.Push(new State());
+		base.Visit(node);
+		
+		// Make sure all control paths return a value
+		if (!(((FuncType)node.symbol.type).returnType is VoidType) && !stack.Peek().didReturn) {
+			log.ErrorNotAllPathsReturnValue(node.location);
+		}
+		
+		stack = oldStack;
+		return null;
+	}
+	
+	public override Null Visit(Block node)
+	{
+		foreach (Stmt stmt in node.stmts) {
+			if (stack != null && stack.Peek().didReturn && !stack.Peek().warnedDeadCode) {
+				log.WarningDeadCode(stmt.location);
+				stack.Peek().warnedDeadCode = true;
+			}
+			stmt.Accept(this);
+		}
+		return null;
+	}
+	
+	public override Null Visit(ReturnStmt node)
+	{
+		base.Visit(node);
+		stack.Peek().didReturn = true;
+		return null;
+	}
+	
+	public override Null Visit(IfStmt node)
+	{
+		bool thenReturn = false;
+		bool elseReturn = false;
+		node.test.Accept(this);
+		
+		// Follow the true branch
+		Push();
+		node.thenBlock.Accept(this);
+		thenReturn = stack.Peek().didReturn;
+		stack.Pop();
+		
+		// Follow the false branch
+		if (node.elseBlock != null) {
+			Push();
+			node.elseBlock.Accept(this);
+			elseReturn = stack.Peek().didReturn;
+			stack.Pop();
+		}
+		
+		// Stop control flow here if it stopped for both branches
+		if (thenReturn && elseReturn) {
+			stack.Peek().didReturn = true;
+		}
+		
+		return null;
+	}
+}
+
+////////////////////////////////////////////////////////////////////////////////
 // Compiler
 ////////////////////////////////////////////////////////////////////////////////
 
@@ -684,6 +829,7 @@ public static class Compiler
 			new VisitorPass<Null>(new DefineSymbolsPass(log)),
 			new VisitorPass<Null>(new ComputeSymbolTypesPass(log)),
 			new VisitorPass<Null>(new ComputeTypesPass(log)),
+			new VisitorPass<Null>(new FlowValidationPass(log)),
 		};
 		foreach (Pass pass in passes) {
 			if (!pass.Apply(log, module)) {
