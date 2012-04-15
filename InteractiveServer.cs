@@ -278,7 +278,7 @@ public class NodeToStringVisitor : Visitor<string>
 	public override string Visit(ClassDef node)
 	{
 		Indent();
-		string fields = Field("name", node.name) + Field("superName", node.superName) + Field("block", node.block);
+		string fields = Field("name", node.name) + Field("block", node.block);
 		Dedent();
 		return Wrap("ClassDef", fields);
 	}

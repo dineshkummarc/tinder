@@ -125,7 +125,6 @@ public static class Constants
 		{ "char", TokenKind.Char },
 		{ "string", TokenKind.String },
 	};
-	
 	public static readonly Dictionary<TokenKind, PrimKind> tokenToPrim = new Dictionary<TokenKind, PrimKind> {
 		{ TokenKind.Bool, PrimKind.Bool },
 		{ TokenKind.Int, PrimKind.Int },
@@ -240,5 +239,10 @@ public static class Utility
 	public static bool IsString(this Type type)
 	{
 		return type is PrimType && ((PrimType)type).kind == PrimKind.String;
+	}
+	
+	public static bool IsNumeric(this Type type)
+	{
+		return type.IsInt() || type.IsFloat() || type.IsChar();
 	}
 }

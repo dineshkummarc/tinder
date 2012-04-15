@@ -15,6 +15,7 @@ public abstract class Node
 public class Block : Node
 {
 	public List<Stmt> stmts;
+	public Scope scope;
 	
 	public override T Accept<T>(Visitor<T> visitor)
 	{
@@ -91,13 +92,14 @@ public class ExternalStmt : Stmt
 public abstract class Def : Stmt
 {
 	public string name;
+	public Symbol symbol;
 }
 
 public class VarDef : Def
 {
 	public Expr type;
 	public Expr value; // Might be null
-
+	
 	public override T Accept<T>(Visitor<T> visitor)
 	{
 		return visitor.Visit(this);
@@ -118,7 +120,6 @@ public class FuncDef : Def
 
 public class ClassDef : Def
 {
-	public string superName; // Might be null
 	public Block block;
 	
 	public override T Accept<T>(Visitor<T> visitor)
@@ -364,9 +365,14 @@ public sealed class Null
 
 public class DefaultVisitor : Visitor<Null>
 {
+	public Scope scope;
+	
 	public override Null Visit(Block node)
 	{
+		Scope old = scope;
+		scope = node.scope;
 		VisitAll(node.stmts);
+		scope = old;
 		return null;
 	}
 

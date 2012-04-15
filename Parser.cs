@@ -163,7 +163,7 @@ public static class Parser
 		pratt.Get(TokenKind.FloatLit).prefixParser = ParseFloatExpr;
 		
 		// Types
-		pratt.Literal(TokenKind.Void, (Token token) => new TypeExpr { location = token.location, type = new VoidType() });
+		pratt.Literal(TokenKind.Void, ParseVoidType);
 		pratt.Literal(TokenKind.Bool, ParsePrimType);
 		pratt.Literal(TokenKind.Int, ParsePrimType);
 		pratt.Literal(TokenKind.Float, ParsePrimType);
@@ -225,11 +225,19 @@ public static class Parser
 		};
 	}
 	
+	private static TypeExpr ParseVoidType(Token token)
+	{
+		return new TypeExpr {
+			location = token.location,
+			type = new MetaType { instanceType = new VoidType() }
+		};
+	}
+	
 	private static TypeExpr ParsePrimType(Token token)
 	{
 		return new TypeExpr {
 			location = token.location,
-			type = new PrimType { kind = Constants.tokenToPrim[token.kind] }
+			type = new MetaType { instanceType = new PrimType { kind = Constants.tokenToPrim[token.kind] } }
 		};
 	}
 
@@ -515,8 +523,7 @@ public static class Parser
 		context.Next();
 		
 		// Parse the block
-		node.block = ParseBlock(context);
-		if (node.block == null) {
+		if ((node.block = ParseBlock(context)) == null) {
 			return null;
 		}
 		
@@ -540,17 +547,8 @@ public static class Parser
 			return null;
 		}
 		
-		// Parse the superclass
-		if (context.Consume(TokenKind.Colon)) {
-			node.superName = context.CurrentToken().text;
-			if (!context.Consume(TokenKind.Identifier)) {
-				return null;
-			}
-		}
-		
 		// Parse the block
-		node.block = ParseBlock(context);
-		if (node.block == null) {
+		if ((node.block = ParseBlock(context)) == null) {
 			return null;
 		}
 		
