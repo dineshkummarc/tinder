@@ -240,7 +240,7 @@ public class StructuralCheckPass : DefaultVisitor
 }
 
 ////////////////////////////////////////////////////////////////////////////////
-// class DefineSymbolsPass
+// DefineSymbolsPass
 ////////////////////////////////////////////////////////////////////////////////
 
 public class DefineSymbolsPass : DefaultVisitor
@@ -333,7 +333,7 @@ public class DefineSymbolsPass : DefaultVisitor
 }
 
 ////////////////////////////////////////////////////////////////////////////////
-// class ComputeSymbolTypesPass
+// ComputeSymbolTypesPass
 ////////////////////////////////////////////////////////////////////////////////
 
 // Compute the type of all expressions that are expected to contain types, then
@@ -380,7 +380,7 @@ public class ComputeSymbolTypesPass : DefaultVisitor
 }
 
 ////////////////////////////////////////////////////////////////////////////////
-// class ComputeTypesPass
+// ComputeTypesPass
 ////////////////////////////////////////////////////////////////////////////////
 
 public class ComputeTypesPass : DefaultVisitor
@@ -468,9 +468,10 @@ public class ComputeTypesPass : DefaultVisitor
 		node.computedType = new ErrorType();
 		base.Visit(node);
 		
-		// Try to resolve overloaded functions
 		Type type = node.func.computedType;
 		List<Type> argTypes = node.args.ConvertAll(arg => arg.computedType);
+		
+		// Try to resolve overloaded functions
 		if (type is OverloadedFuncType) {
 			OverloadedFuncType overloadedType = (OverloadedFuncType)type;
 			List<FuncType> exactMatches = new List<FuncType>();
@@ -493,6 +494,12 @@ public class ComputeTypesPass : DefaultVisitor
 			} else if (matches.Count == 1) {
 				type = matches[0];
 			}
+		}
+		
+		// Check for constructors
+		if (type is MetaType && argTypes.Count == 0) {
+			node.computedType = ((MetaType)type).instanceType;
+			return null;
 		}
 		
 		// Call the function if there is one, inserting implicit casts as appropriate
