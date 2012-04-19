@@ -149,6 +149,7 @@ public enum SymbolKind
 public class Symbol
 {
 	public SymbolKind kind;
+	public bool isStatic; // Copied from def if present
 	public Def def; // Might be null for generated symbols
 	public Type type; // Might be null until after types are assigned to symbols
 }
@@ -192,15 +193,22 @@ public class Scope
 		if (!map.TryGetValue(symbol.def.name, out existing)) {
 			// Insert a new symbol
 			map.Add(symbol.def.name, symbol);
-		} else if (symbol.kind == SymbolKind.Func && existing.kind == SymbolKind.Func) {
-			// Create an overload
-			map[symbol.def.name] = new Symbol {
-				kind = SymbolKind.OverloadedFunc,
-				type = new OverloadedFuncType { overloads = new List<Symbol> { existing, symbol } }
-			};
-		} else if (symbol.kind == SymbolKind.Func && existing.kind == SymbolKind.OverloadedFunc) {
-			// Add to an overload
-			((OverloadedFuncType)existing.type).overloads.Add(symbol);
+		} else if (symbol.kind == SymbolKind.Func && (existing.kind == SymbolKind.Func || existing.kind == SymbolKind.OverloadedFunc)) {
+			// Don't let modifiers change when overloading
+			if (existing.isStatic != symbol.isStatic) {
+				log.ErrorOverloadChangedModifier(symbol.def.location, "static");
+			}
+			
+			// Add to the overload, creating it if needed
+			if (existing.kind == SymbolKind.Func) {
+				map[symbol.def.name] = new Symbol {
+					kind = SymbolKind.OverloadedFunc,
+					isStatic = existing.isStatic,
+					type = new OverloadedFuncType { overloads = new List<Symbol> { existing, symbol } }
+				};
+			} else {
+				((OverloadedFuncType)existing.type).overloads.Add(symbol);
+			}
 		} else {
 			// All other cases are errors
 			log.ErrorRedefinition(symbol.def.location, symbol.def.name);
@@ -222,9 +230,8 @@ public class Scope
 				
 			case LookupKind.InstanceMember:
 			case LookupKind.StaticMember:
-				if (kind == ScopeKind.Class && map.TryGetValue(name, out symbol)) {
-					if ((symbol.kind == SymbolKind.Class) == (lookupKind == LookupKind.StaticMember))
-						return symbol;
+				if (kind == ScopeKind.Class && map.TryGetValue(name, out symbol) && symbol.isStatic == (lookupKind == LookupKind.StaticMember)) {
+					return symbol;
 				}
 				break;
 		}

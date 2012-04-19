@@ -108,6 +108,7 @@ public class VarDef : Def
 
 public class FuncDef : Def
 {
+	public bool isStatic;
 	public Expr returnType;
 	public List<VarDef> argDefs;
 	public Block block; // Might be null

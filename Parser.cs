@@ -357,6 +357,9 @@ public static class Parser
 			return ParseClassDef(context);
 		}
 		
+		// Check for modifiers now
+		bool isStatic = context.Consume(TokenKind.Static);
+		
 		// If we don't know what it is yet, try an expression
 		Location location = context.CurrentToken().location;
 		Expr expr = pratt.Parse(context);
@@ -384,6 +387,7 @@ public static class Parser
 			FuncDef func = new FuncDef {
 				location = location,
 				name = name,
+				isStatic = isStatic,
 				returnType = expr,
 				argDefs = new List<VarDef>()
 			};
@@ -416,6 +420,11 @@ public static class Parser
 			}
 			
 			return func;
+		}
+		
+		// Only possible option is a variable definition
+		if (isStatic) {
+			return null;
 		}
 		
 		// Variable definition and initialization

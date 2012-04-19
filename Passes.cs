@@ -122,6 +122,16 @@ public static class ErrorMessages
 		log.Error(location, "not all control paths return a value");
 	}
 	
+	public static void ErrorUseBeforeDefinition(this Log log, Location location, string name)
+	{
+		log.Error(location, "use of variable \"" + name + "\" before its definition");
+	}
+	
+	public static void ErrorOverloadChangedModifier(this Log log, Location location, string modifier)
+	{
+		log.Error(location, "overload has different " + modifier + " modifier than previous overload");
+	}
+	
 	public static void WarningDeadCode(this Log log, Location location)
 	{
 		log.Warning(location, "dead code");
@@ -326,6 +336,7 @@ public class DefineSymbolsPass : DefaultVisitor
 		// Define the variable
 		node.symbol = new Symbol {
 			kind = SymbolKind.Variable,
+			isStatic = false,
 			def = node,
 			type = new ErrorType()
 		};
@@ -340,6 +351,7 @@ public class DefineSymbolsPass : DefaultVisitor
 		// Define the class
 		node.symbol = new Symbol {
 			kind = SymbolKind.Class,
+			isStatic = true,
 			def = node,
 			type = new MetaType { instanceType = new ClassType { def = node } }
 		};
@@ -357,6 +369,7 @@ public class DefineSymbolsPass : DefaultVisitor
 		// Define the function
 		node.symbol = new Symbol {
 			kind = SymbolKind.Func,
+			isStatic = node.isStatic,
 			def = node,
 			type = new ErrorType()
 		};
@@ -812,12 +825,14 @@ public class FlowValidationPass : DefaultVisitor
 	{
 		public bool didReturn;
 		public bool warnedDeadCode;
+		public Dictionary<Symbol, List<Location>> usesBeforeDefinition = new Dictionary<Symbol, List<Location>>();
 		
 		public State Clone()
 		{
 			return new State {
 				didReturn = didReturn,
 				warnedDeadCode = warnedDeadCode,
+				usesBeforeDefinition = usesBeforeDefinition,
 			};
 		}
 	}
@@ -845,10 +860,8 @@ public class FlowValidationPass : DefaultVisitor
 	
 	public override Null Visit(FuncDef node)
 	{
-		Stack<State> oldStack = stack;
-		stack = new Stack<State>();
-		
 		// Follow control flow through the function
+		stack = new Stack<State>();
 		stack.Push(new State());
 		base.Visit(node);
 		
@@ -857,12 +870,45 @@ public class FlowValidationPass : DefaultVisitor
 			log.ErrorNotAllPathsReturnValue(node.location);
 		}
 		
-		stack = oldStack;
+		stack = null;
+		return null;
+	}
+	
+	public override Null Visit(VarDef node)
+	{
+		if (stack != null) {
+			// Check for variable usage in the initializer
+			base.Visit(node);
+			
+			// Error if a variable is defined after its use
+			Dictionary<Symbol, List<Location>> map = stack.Peek().usesBeforeDefinition;
+			List<Location> locations;
+			if (map.TryGetValue(node.symbol, out locations)) {
+				foreach (Location location in locations) {
+					log.ErrorUseBeforeDefinition(location, node.symbol.def.name);
+				}
+			}
+		}
+		
+		return null;
+	}
+	
+	public override Null Visit(IdentExpr node)
+	{
+		// Mark uses of new symbols for error reporting
+		Dictionary<Symbol, List<Location>> map = stack.Peek().usesBeforeDefinition;
+		List<Location> locations;
+		if (!map.TryGetValue(node.symbol, out locations)) {
+			map[node.symbol] = locations = new List<Location>();
+		}
+		locations.Add(node.location);
+		
 		return null;
 	}
 	
 	public override Null Visit(Block node)
 	{
+		// Warn for statements after control flow has ended
 		foreach (Stmt stmt in node.stmts) {
 			if (stack != null && stack.Peek().didReturn && !stack.Peek().warnedDeadCode) {
 				log.WarningDeadCode(stmt.location);
@@ -870,6 +916,7 @@ public class FlowValidationPass : DefaultVisitor
 			}
 			stmt.Accept(this);
 		}
+		
 		return null;
 	}
 	

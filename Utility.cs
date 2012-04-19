@@ -115,6 +115,7 @@ public static class Constants
 		{ "not", TokenKind.Not },
 		{ "as", TokenKind.As },
 		{ "external", TokenKind.External },
+		{ "static", TokenKind.Static },
 		{ "null", TokenKind.Null },
 		{ "this", TokenKind.This },
 		{ "true", TokenKind.True },

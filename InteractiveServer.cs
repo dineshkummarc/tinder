@@ -8,6 +8,84 @@ using System.Collections.Generic;
 public class InteractiveServer
 {
 	private const int port = 8080;
+	private const string htmlExample = htmlLinkList;
+	private const string htmlLinkList = @"
+external {
+  void print(string text)
+  string str(int x)
+}
+
+class Link {
+  int value
+  Link next
+}
+
+Link cons(int value, Link next) {
+  Link link = Link()
+  link.value = value
+  link.next = next
+  return link
+}
+
+string printHelper(Link link) {
+  if link != null {
+    string text = str(link.value)
+    if link.next != null { text = text + "", "" }
+    return text + printHelper(link.next)
+  }
+  return """"
+}
+
+void print(Link link) {
+  print(""["" + printHelper(link) + ""]"")
+}
+
+void main() {
+  Link list = cons(1, cons(2, cons(3, null)))
+  print(list)
+}
+";
+	private const string htmlVector = @"
+external {
+  void print(string text)
+  string str(float x)
+}
+
+class Vector {
+  float x, y
+
+  static Vector new(float x, float y) {
+    Vector v = Vector()
+    v.x = x
+    v.y = y
+    return v
+  }
+
+  static Vector new(Vector o) {
+    Vector v = Vector()
+    v.x = o.x
+    v.y = o.y
+    return v
+  }
+
+  Vector plus(Vector vec) {
+    return Vector.new(this.x + vec.x, this.y + vec.y)
+  }
+}
+
+string str(Vector v) {
+  return ""Vector("" + str(v.x) + "", "" + str(v.y) + "")""
+}
+
+Vector a
+
+void main() {
+  a = Vector.new(1, 2)
+  Vector b = Vector.new(3, 4)
+  Vector c = Vector.new(a.plus(b))
+  print(str(a) + "" + "" + str(b) + "" = "" + str(c))
+}
+";
 	private const string html = @"
 		<!DOCTYPE html>
 		<html><head>
@@ -17,7 +95,7 @@ public class InteractiveServer
 				body { font: 13px Arial; margin: 30px; }
 				textarea, pre { font: 12px Inconsolata, Consolas, monospace; }
 			</style>
-			<textarea id='input' rows='20' cols='100'></textarea>
+			<textarea id='input' rows='20' cols='100'>%s</textarea>
 			<div id='output'></div>
 			<script>
 
@@ -85,7 +163,7 @@ public class InteractiveServer
 		switch (context.Request.Url.AbsolutePath) {
 			case "/":
 				context.Response.ContentType = "text/html";
-				output.Write(html);
+				output.Write(html.Replace("%s", htmlExample));
 				output.Close();
 				break;
 			case "/compile":
