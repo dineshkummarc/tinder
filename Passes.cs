@@ -7,6 +7,11 @@ using System.Collections.Generic;
 
 public static class ErrorMessages
 {
+	public static void ErrorRedefinition(this Log log, Location location, string name)
+	{
+		log.Error(location, "redefinition of " + name + " in the same scope");
+	}
+	
 	public static void ErrorStmtNotAllowed(this Log log, Location location, string statement, string place)
 	{
 		log.Error(location, statement + " is not allowed " + place);
@@ -33,38 +38,68 @@ public static class ErrorMessages
 	
 	public static void ErrorNotType(this Log log, Location location, Type type)
 	{
+		if (type is ErrorType) {
+			return;
+		}
 		log.Error(location, "value of type \"" + type + "\" is not a type");
 	}
 	
 	public static void ErrorTypeMismatch(this Log log, Location location, Type expected, Type found)
 	{
+		if (expected is ErrorType || found is ErrorType) {
+			return;
+		}
 		log.Error(location, "expected value of type \"" + expected + "\" but found value of type \"" + found + "\"");
+	}
+	
+	public static void ErrorUnaryOpNotFound(this Log log, UnaryExpr node)
+	{
+		if (node.value.computedType is ErrorType) {
+			return;
+		}
+		log.Error(node.location, "no match for operator " + node.op.AsString() + " that takes arguments \"(" +
+			node.value.computedType + ")\"");
 	}
 	
 	public static void ErrorBinaryOpNotFound(this Log log, BinaryExpr node)
 	{
+		if (node.left.computedType is ErrorType || node.right.computedType is ErrorType) {
+			return;
+		}
 		log.Error(node.location, "no match for operator " + node.op.AsString() + " that takes arguments \"(" +
 			node.left.computedType + ", " + node.right.computedType + ")\"");
 	}
 	
 	public static void ErrorInvalidCast(this Log log, Location location, Type from, Type to)
 	{
+		if (from is ErrorType || to is ErrorType) {
+			return;
+		}
 		log.Error(location, "cannot cast value of type \"" + from + "\" to \"" + to + "\"");
 	}
 	
 	public static void ErrorBadMemberAccess(this Log log, MemberExpr node)
 	{
+		if (node.obj.computedType is ErrorType) {
+			return;
+		}
 		log.Error(node.location, "cannot access member \"" + node.name + "\" on value of type \"" +
 			node.obj.computedType + "\"");
 	}
 
 	public static void ErrorCallNotFound(this Log log, Location location, Type funcType, List<Type> argTypes)
 	{
+		if (funcType is ErrorType || argTypes.Exists(x => x is ErrorType)) {
+			return;
+		}
 		log.Error(location, "cannot call value of type \"" + funcType + "\" with arguments \"" + argTypes.AsString() + "\"");
 	}
 	
 	public static void ErrorMultipleOverloadsFound(this Log log, Location location, List<Type> argTypes)
 	{
+		if (argTypes.Exists(x => x is ErrorType)) {
+			return;
+		}
 		log.Error(location, "multiple ambiguous overloads that match arguments \"" + argTypes.AsString() + "\"");
 	}
 	
@@ -187,7 +222,7 @@ public class StructuralCheckPass : DefaultVisitor
 				if (stmt is ClassDef || stmt is VarDef || stmt is FuncDef) {
 					continue;
 				}
-				log.ErrorStmtNotAllowed(stmt.location, NameForStmt(stmt), "inside an extern block");
+				log.ErrorStmtNotAllowed(stmt.location, NameForStmt(stmt), "inside an external block");
 			}
 		} else {
 			foreach (Stmt stmt in node.stmts) {
@@ -207,6 +242,20 @@ public class StructuralCheckPass : DefaultVisitor
 		Push().inExternal = true;
 		base.Visit(node);
 		stack.Pop();
+		return null;
+	}
+	
+	public override Null Visit(VarDef node)
+	{
+		if (node.value != null) {
+			if (stack.Peek().inExternal) {
+				log.ErrorStmtNotAllowed(node.location, "initialized variable", "inside an external block");
+			} else if (!stack.Peek().inClass && !stack.Peek().inFunction) {
+				log.ErrorStmtNotAllowed(node.location, "initialized variable", "at module scope");
+			}
+		}
+		
+		base.Visit(node);
 		return null;
 	}
 	
@@ -256,8 +305,17 @@ public class DefineSymbolsPass : DefaultVisitor
 	{
 		// Only make a new scope if our parent node didn't make one already
 		if (node.scope == null) {
-			node.scope = new Scope(scope, log);
+			node.scope = new Scope(scope, log, ScopeKind.Local);
 		}
+		
+		base.Visit(node);
+		return null;
+	}
+	
+	public override Null Visit(Module node)
+	{
+		// Make a module scope
+		node.block.scope = new Scope(null, log, ScopeKind.Module);
 		
 		base.Visit(node);
 		return null;
@@ -287,6 +345,9 @@ public class DefineSymbolsPass : DefaultVisitor
 		};
 		scope.Define(node.symbol);
 		
+		// Make a class scope
+		node.block.scope = new Scope(scope, log, ScopeKind.Class);
+		
 		base.Visit(node);
 		return null;
 	}
@@ -306,7 +367,7 @@ public class DefineSymbolsPass : DefaultVisitor
 		node.returnType.Accept(this);
 		if (node.block != null) {
 			// Define arguments in the scope of the body
-			node.block.scope = new Scope(scope, log);
+			node.block.scope = new Scope(scope, log, ScopeKind.Func);
 			scope = node.block.scope;
 			foreach (VarDef argDef in node.argDefs)
 				argDef.Accept(this);
@@ -314,7 +375,7 @@ public class DefineSymbolsPass : DefaultVisitor
 			node.block.Accept(this);
 		} else {
 			// Define arguments in a temporary scope if no body is present
-			scope = new Scope(scope, log);
+			scope = new Scope(scope, log, ScopeKind.Func);
 			foreach (VarDef argDef in node.argDefs)
 				argDef.Accept(this);
 			scope = scope.parent;
@@ -444,12 +505,37 @@ public class ComputeTypesPass : DefaultVisitor
 	public override Null Visit(IdentExpr node)
 	{
 		node.computedType = new ErrorType();
-		Symbol symbol = scope.Lookup(node.name);
-		if (symbol != null) {
-			node.computedType = symbol.type;
+		node.symbol = scope.Lookup(node.name, LookupKind.Normal);
+		if (node.symbol != null) {
+			node.computedType = node.symbol.type;
 		} else {
 			log.ErrorUndefinedSymbol(node.location, node.name);
 		}
+		return null;
+	}
+	
+	public override Null Visit(UnaryExpr node)
+	{
+		node.computedType = new ErrorType();
+		base.Visit(node);
+		
+		switch (node.op) {
+			case UnaryOp.Negative:
+				if (node.value.computedType.IsNumeric()) {
+					node.computedType = node.value.computedType;
+				} else {
+					log.ErrorUnaryOpNotFound(node);
+				}
+				break;
+			case UnaryOp.Not:
+				if (node.value.computedType.IsBool()) {
+					node.computedType = node.value.computedType;
+				} else {
+					log.ErrorUnaryOpNotFound(node);
+				}
+				break;
+		}
+		
 		return null;
 	}
 	
@@ -543,8 +629,15 @@ public class ComputeTypesPass : DefaultVisitor
 		node.computedType = new ErrorType();
 		base.Visit(node);
 		
-		if (node.obj.computedType is ClassType) {
-			node.symbol = ((ClassType)node.obj.computedType).def.block.scope.Lookup(node.name);
+		LookupKind kind = LookupKind.InstanceMember;
+		Type type = node.obj.computedType;
+		if (type is MetaType) {
+			type = ((MetaType)type).instanceType;
+			kind = LookupKind.StaticMember;
+		}
+		
+		if (type is ClassType) {
+			node.symbol = ((ClassType)type).def.block.scope.Lookup(node.name, kind);
 			if (node.symbol == null) {
 				log.ErrorBadMemberAccess(node);
 			} else {
@@ -656,6 +749,14 @@ public class ComputeTypesPass : DefaultVisitor
 		
 		switch (node.op) {
 			case BinaryOp.Assign:
+				if (left.EqualsType(right)) {
+					node.computedType = new VoidType();
+					return true;
+				} else if (left.CanImplicitlyConvertTo(right)) {
+					node.right = InsertCast(node.right, left);
+					node.computedType = new VoidType();
+					return true;
+				}
 				break;
 		
 			case BinaryOp.And:
@@ -734,6 +835,12 @@ public class FlowValidationPass : DefaultVisitor
 		State state = stack.Peek().Clone();
 		stack.Push(state);
 		return state;
+	}
+	
+	public override Null Visit(ExternalStmt node)
+	{
+		// Control flow isn't possible in external blocks
+		return null;
 	}
 	
 	public override Null Visit(FuncDef node)

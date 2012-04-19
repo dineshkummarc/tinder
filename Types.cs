@@ -157,15 +157,32 @@ public class Symbol
 // Scope
 ////////////////////////////////////////////////////////////////////////////////
 
+public enum ScopeKind
+{
+	Func,
+	Class,
+	Module,
+	Local,
+}
+
+public enum LookupKind
+{
+	Normal,
+	StaticMember,
+	InstanceMember,
+}
+
 public class Scope
 {
 	public Log log;
 	public Scope parent;
+	public ScopeKind kind;
 	public Dictionary<string, Symbol> map = new Dictionary<string, Symbol>();
 	
-	public Scope(Scope parent, Log log)
+	public Scope(Scope parent, Log log, ScopeKind kind)
 	{
 		this.parent = parent;
+		this.kind = kind;
 		this.log = log;
 	}
 	
@@ -186,18 +203,30 @@ public class Scope
 			((OverloadedFuncType)existing.type).overloads.Add(symbol);
 		} else {
 			// All other cases are errors
-			log.Error(symbol.def.location, "redefinition of " + symbol.def.name + " in the same scope");
+			log.ErrorRedefinition(symbol.def.location, symbol.def.name);
 		}
 	}
 	
-	public Symbol Lookup(string name)
+	public Symbol Lookup(string name, LookupKind lookupKind)
 	{
 		Symbol symbol;
-		if (map.TryGetValue(name, out symbol)) {
-			return symbol;
-		}
-		if (parent != null) {
-			return parent.Lookup(name);
+		switch (lookupKind) {
+			case LookupKind.Normal:
+				if (kind != ScopeKind.Class && map.TryGetValue(name, out symbol)) {
+					return symbol;
+				}
+				if (parent != null) {
+					return parent.Lookup(name, LookupKind.Normal);
+				}
+				break;
+				
+			case LookupKind.InstanceMember:
+			case LookupKind.StaticMember:
+				if (kind == ScopeKind.Class && map.TryGetValue(name, out symbol)) {
+					if ((symbol.kind == SymbolKind.Class) == (lookupKind == LookupKind.StaticMember))
+						return symbol;
+				}
+				break;
 		}
 		return null;
 	}

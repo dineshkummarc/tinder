@@ -196,6 +196,7 @@ public class StringExpr : Expr
 public class IdentExpr : Expr
 {
 	public string name;
+	public Symbol symbol;
 	
 	public override T Accept<T>(Visitor<T> visitor)
 	{
