@@ -47,6 +47,7 @@ public enum TokenKind
 	// Keywords
 	If,
 	Else,
+	While,
 	Class,
 	Return,
 	And,

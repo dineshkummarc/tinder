@@ -336,6 +336,14 @@ public class NodeToStringVisitor : Visitor<string>
 		return Wrap("ExternalStmt", fields);
 	}
 	
+	public override string Visit(WhileStmt node)
+	{
+		Indent();
+		string fields = Field("test", node.test) + Field("block", node.block);
+		Dedent();
+		return Wrap("WhileStmt", fields);
+	}
+	
 	public override string Visit(VarDef node)
 	{
 		Indent();

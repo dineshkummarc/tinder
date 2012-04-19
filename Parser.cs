@@ -353,6 +353,9 @@ public static class Parser
 		if (context.Peek(TokenKind.External)) {
 			return ParseExternalStmt(context);
 		}
+		if (context.Peek(TokenKind.While)) {
+			return ParseWhileStmt(context);
+		}
 		if (context.Peek(TokenKind.Class)) {
 			return ParseClassDef(context);
 		}
@@ -530,6 +533,30 @@ public static class Parser
 		// Create the node
 		ExternalStmt node = new ExternalStmt { location = context.CurrentToken().location };
 		context.Next();
+		
+		// Parse the block
+		if ((node.block = ParseBlock(context)) == null) {
+			return null;
+		}
+		
+		// Check for end of statement
+		if (!ParseEndOfStatement(context)) {
+			return null;
+		}
+		
+		return node;
+	}
+	
+	private static WhileStmt ParseWhileStmt(ParserContext context)
+	{
+		// Create the node
+		WhileStmt node = new WhileStmt { location = context.CurrentToken().location };
+		context.Next();
+		
+		// Parse the condition
+		if ((node.test = pratt.Parse(context)) == null) {
+			return null;
+		}
 		
 		// Parse the block
 		if ((node.block = ParseBlock(context)) == null) {

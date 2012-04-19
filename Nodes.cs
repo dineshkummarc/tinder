@@ -85,6 +85,17 @@ public class ExternalStmt : Stmt
 	}
 }
 
+public class WhileStmt : Stmt
+{
+	public Expr test;
+	public Block block;
+	
+	public override T Accept<T>(Visitor<T> visitor)
+	{
+		return visitor.Visit(this);
+	}
+}
+
 ////////////////////////////////////////////////////////////////////////////////
 // Def
 ////////////////////////////////////////////////////////////////////////////////
@@ -321,6 +332,8 @@ public abstract class Visitor<T>
 	
 	public abstract T Visit(ExternalStmt node);
 	
+	public abstract T Visit(WhileStmt node);
+	
 	public abstract T Visit(VarDef node);
 
 	public abstract T Visit(FuncDef node);
@@ -409,6 +422,13 @@ public class DefaultVisitor : Visitor<Null>
 	
 	public override Null Visit(ExternalStmt node)
 	{
+		node.block.Accept(this);
+		return null;
+	}
+	
+	public override Null Visit(WhileStmt node)
+	{
+		node.test.Accept(this);
 		node.block.Accept(this);
 		return null;
 	}

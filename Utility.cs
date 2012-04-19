@@ -108,6 +108,7 @@ public static class Constants
 		
 		{ "if", TokenKind.If },
 		{ "else", TokenKind.Else },
+		{ "while", TokenKind.While },
 		{ "class", TokenKind.Class },
 		{ "return", TokenKind.Return },
 		{ "and", TokenKind.And },

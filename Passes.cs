@@ -192,6 +192,9 @@ public class StructuralCheckPass : DefaultVisitor
 		if (stmt is ExternalStmt) {
 			return "external block";
 		}
+		if (stmt is WhileStmt) {
+			return "while block";
+		}
 		if (stmt is VarDef) {
 			return "variable";
 		}
@@ -222,7 +225,7 @@ public class StructuralCheckPass : DefaultVisitor
 			}
 		} else if (stack.Peek().inFunction) {
 			foreach (Stmt stmt in node.stmts) {
-				if (stmt is VarDef || stmt is ExprStmt || stmt is IfStmt || stmt is ReturnStmt) {
+				if (stmt is VarDef || stmt is ExprStmt || stmt is IfStmt || stmt is ReturnStmt || stmt is WhileStmt) {
 					continue;
 				}
 				log.ErrorStmtNotAllowed(stmt.location, NameForStmt(stmt), "inside a function body");
