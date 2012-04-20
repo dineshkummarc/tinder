@@ -132,6 +132,11 @@ public static class ErrorMessages
 		log.Error(location, "overload has different " + modifier + " modifier than previous overload");
 	}
 	
+	public static void ErrorNoOverloadContext(this Log log, Location location)
+	{
+		log.Error(location, "cannot resolve overloaded function without context");
+	}
+	
 	public static void WarningDeadCode(this Log log, Location location)
 	{
 		log.Warning(location, "dead code");
@@ -465,6 +470,7 @@ public class ComputeTypesPass : DefaultVisitor
 	private Log log;
 	private Type returnType;
 	private ClassType thisType;
+	public List<Type> overloadContext;
 	
 	public ComputeTypesPass(Log log)
 	{
@@ -473,18 +479,21 @@ public class ComputeTypesPass : DefaultVisitor
 	
 	public override Null Visit(TypeExpr node)
 	{
+		overloadContext = null;
 		node.computedType = node.type;
 		return null;
 	}
 	
 	public override Null Visit(NullExpr node)
 	{
+		overloadContext = null;
 		node.computedType = new NullType();
 		return null;
 	}
 
 	public override Null Visit(ThisExpr node)
 	{
+		overloadContext = null;
 		node.computedType = new ErrorType();
 		if (thisType != null) {
 			node.computedType = thisType;
@@ -496,30 +505,38 @@ public class ComputeTypesPass : DefaultVisitor
 
 	public override Null Visit(BoolExpr node)
 	{
+		overloadContext = null;
 		node.computedType = new PrimType { kind = PrimKind.Bool };
 		return null;
 	}
 	
 	public override Null Visit(IntExpr node)
 	{
+		overloadContext = null;
 		node.computedType = new PrimType { kind = PrimKind.Int };
 		return null;
 	}
 
 	public override Null Visit(FloatExpr node)
 	{
+		overloadContext = null;
 		node.computedType = new PrimType { kind = PrimKind.Float };
 		return null;
 	}
 
 	public override Null Visit(StringExpr node)
 	{
+		overloadContext = null;
 		node.computedType = new PrimType { kind = PrimKind.String };
 		return null;
 	}
 	
 	public override Null Visit(IdentExpr node)
 	{
+		List<Type> providedOverloadContext = overloadContext;
+		
+		// Perform the symbol lookup
+		overloadContext = null;
 		node.computedType = new ErrorType();
 		node.symbol = scope.Lookup(node.name, LookupKind.Normal);
 		if (node.symbol != null) {
@@ -527,11 +544,16 @@ public class ComputeTypesPass : DefaultVisitor
 		} else {
 			log.ErrorUndefinedSymbol(node.location, node.name);
 		}
+		
+		// Perform overload resolution using information we were provided
+		ResolveOverloads(node, providedOverloadContext);
+		
 		return null;
 	}
 	
 	public override Null Visit(UnaryExpr node)
 	{
+		overloadContext = null;
 		node.computedType = new ErrorType();
 		base.Visit(node);
 		
@@ -557,6 +579,7 @@ public class ComputeTypesPass : DefaultVisitor
 	
 	public override Null Visit(BinaryExpr node)
 	{
+		overloadContext = null;
 		node.computedType = new ErrorType();
 		base.Visit(node);
 		if (!SetUpBinaryOp(node)) {
@@ -567,36 +590,17 @@ public class ComputeTypesPass : DefaultVisitor
 
 	public override Null Visit(CallExpr node)
 	{
+		overloadContext = null;
 		node.computedType = new ErrorType();
-		base.Visit(node);
 		
-		Type type = node.func.computedType;
+		// Visit the arguments first to get context for resolving overloads
+		VisitAll(node.args);
 		List<Type> argTypes = node.args.ConvertAll(arg => arg.computedType);
 		
-		// Try to resolve overloaded functions
-		if (type is OverloadedFuncType) {
-			OverloadedFuncType overloadedType = (OverloadedFuncType)type;
-			List<FuncType> exactMatches = new List<FuncType>();
-			List<FuncType> implicitMatches = new List<FuncType>();
-			
-			// Try to mach each overload
-			foreach (Symbol symbol in overloadedType.overloads) {
-				FuncType funcType = (FuncType)symbol.type;
-				if (argTypes.MatchesExactly(funcType.argTypes)) {
-					exactMatches.Add(funcType);
-				} else if (argTypes.MatchesWithImplicitConversions(funcType.argTypes)) {
-					implicitMatches.Add(funcType);
-				}
-			}
-			
-			// Pick the best-matching overload
-			List<FuncType> matches = (exactMatches.Count > 0) ? exactMatches : implicitMatches;
-			if (matches.Count > 1) {
-				log.ErrorMultipleOverloadsFound(node.location, argTypes);
-			} else if (matches.Count == 1) {
-				type = matches[0];
-			}
-		}
+		// Visit the function last and provide the overload resolving context
+		overloadContext = argTypes;
+		node.func.Accept(this);
+		Type type = node.func.computedType;
 		
 		// Check for constructors
 		if (type is MetaType && argTypes.Count == 0) {
@@ -622,6 +626,7 @@ public class ComputeTypesPass : DefaultVisitor
 	
 	public override Null Visit(CastExpr node)
 	{
+		overloadContext = null;
 		node.computedType = new ErrorType();
 		base.Visit(node);
 		
@@ -642,9 +647,13 @@ public class ComputeTypesPass : DefaultVisitor
 	
 	public override Null Visit(MemberExpr node)
 	{
+		List<Type> providedOverloadContext = overloadContext;
+		
+		overloadContext = null;
 		node.computedType = new ErrorType();
 		base.Visit(node);
 		
+		// Decide whether to do a static or instance symbol lookup
 		LookupKind kind = LookupKind.InstanceMember;
 		Type type = node.obj.computedType;
 		if (type is MetaType) {
@@ -652,6 +661,7 @@ public class ComputeTypesPass : DefaultVisitor
 			kind = LookupKind.StaticMember;
 		}
 		
+		// Perform the symbol lookup
 		if (type is ClassType) {
 			node.symbol = ((ClassType)type).def.block.scope.Lookup(node.name, kind);
 			if (node.symbol == null) {
@@ -663,11 +673,15 @@ public class ComputeTypesPass : DefaultVisitor
 			log.ErrorBadMemberAccess(node);
 		}
 		
+		// Perform overload resolution using information we were provided
+		ResolveOverloads(node, providedOverloadContext);
+		
 		return null;
 	}
 	
 	public override Null Visit(ReturnStmt node)
 	{
+		overloadContext = null;
 		base.Visit(node);
 		if ((node.value == null) != (returnType is VoidType)) {
 			log.ErrorVoidReturn(node.location, returnType is VoidType);
@@ -683,6 +697,7 @@ public class ComputeTypesPass : DefaultVisitor
 	
 	public override Null Visit(VarDef node)
 	{
+		overloadContext = null;
 		base.Visit(node);
 		if (!(node.type.computedType is MetaType)) {
 			log.ErrorNotType(node.type.location, node.type.computedType);
@@ -701,6 +716,7 @@ public class ComputeTypesPass : DefaultVisitor
 	
 	public override Null Visit(FuncDef node)
 	{
+		overloadContext = null;
 		Type old = returnType;
 		returnType = ((FuncType)node.symbol.type).returnType;
 		base.Visit(node);
@@ -710,11 +726,54 @@ public class ComputeTypesPass : DefaultVisitor
 	
 	public override Null Visit(ClassDef node)
 	{
+		overloadContext = null;
 		ClassType old = thisType;
 		thisType = new ClassType { def = node };
 		base.Visit(node);
 		thisType = old;
 		return null;
+	}
+	
+	private void ResolveOverloads(Expr node, List<Type> argTypes)
+	{
+		if (!(node.computedType is OverloadedFuncType)) {
+			return;
+		}
+		
+		if (argTypes == null) {
+			log.ErrorNoOverloadContext(node.location);
+			return;
+		}
+		
+		// Try to resolve overloaded functions
+		OverloadedFuncType overloadedType = (OverloadedFuncType)node.computedType;
+		List<Symbol> exactMatches = new List<Symbol>();
+		List<Symbol> implicitMatches = new List<Symbol>();
+		
+		// Try to match each overload
+		foreach (Symbol symbol in overloadedType.overloads) {
+			FuncType funcType = (FuncType)symbol.type;
+			if (argTypes.MatchesExactly(funcType.argTypes)) {
+				exactMatches.Add(symbol);
+			} else if (argTypes.MatchesWithImplicitConversions(funcType.argTypes)) {
+				implicitMatches.Add(symbol);
+			}
+		}
+		
+		// Pick the best-matching overload
+		List<Symbol> matches = (exactMatches.Count > 0) ? exactMatches : implicitMatches;
+		if (matches.Count > 1) {
+			log.ErrorMultipleOverloadsFound(node.location, argTypes);
+		} else if (matches.Count == 1) {
+			node.computedType = matches[0].type;
+			
+			// Store the resolved symbol
+			if (node is IdentExpr) {
+				((IdentExpr)node).symbol = matches[0];
+			} else if (node is MemberExpr) {
+				((MemberExpr)node).symbol = matches[0];
+			}
+		}
 	}
 	
 	private static Expr InsertCast(Expr value, Type target)

@@ -45,5 +45,6 @@
     <Compile Include="Types.cs" />
     <Compile Include="Nodes.cs" />
     <Compile Include="Passes.cs" />
+    <Compile Include="JavaScript.cs" />
   </ItemGroup>
 </Project>

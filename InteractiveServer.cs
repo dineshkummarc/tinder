@@ -193,6 +193,7 @@ void main() {
 		XmlNode xmlResults = createChild(doc, null, "Results");
 		XmlNode xmlWarnings = createChild(doc, xmlResults, "Warnings");
 		XmlNode xmlErrors = createChild(doc, xmlResults, "Errors");
+		XmlNode xmlJs = createChild(doc, xmlResults, "JavaScript");
 		XmlNode xmlTree = createChild(doc, xmlResults, "Tree");
 		XmlNode xmlTokens = createChild(doc, xmlResults, "Tokens");
 		List<Token> tokens = new List<Token>();
@@ -204,8 +205,11 @@ void main() {
 			if (log.errors.Count == 0) {
 				module = Parser.Parse(log, tokens, "<stdin>");
 				if (module != null) {
-					Compiler.Compile(log, module);
+					bool compiled = Compiler.Compile(log, module);
 					appendText(doc, xmlTree, module.Accept(new NodeToStringVisitor()));
+					if (compiled) {
+						appendText(doc, xmlJs, JsTarget.Generate(module));
+					}
 				}
 			}
 		} catch (Exception e) {

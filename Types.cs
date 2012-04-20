@@ -204,6 +204,7 @@ public class Scope
 				map[symbol.def.name] = new Symbol {
 					kind = SymbolKind.OverloadedFunc,
 					isStatic = existing.isStatic,
+					def = null, // On purpose
 					type = new OverloadedFuncType { overloads = new List<Symbol> { existing, symbol } }
 				};
 			} else {
