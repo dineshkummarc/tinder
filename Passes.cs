@@ -1019,6 +1019,45 @@ public class FlowValidationPass : DefaultVisitor
 }
 
 ////////////////////////////////////////////////////////////////////////////////
+// DefaultInitializePass
+////////////////////////////////////////////////////////////////////////////////
+
+public class DefaultInitializePass : DefaultVisitor
+{
+	public override Null Visit(ExternalStmt node)
+	{
+		// Initialization isn't possible in external statements
+		return null;
+	}
+	
+	public override Null Visit(FuncDef node)
+	{
+		// Don't initialize arguments
+		node.block.Accept(this);
+		return null;
+	}
+	
+	public override Null Visit(VarDef node)
+	{
+		if (node.value == null) {
+			Type type = ((MetaType)node.type.computedType).instanceType;
+			if (type.IsBool()) {
+				node.value = new BoolExpr { value = false, computedType = type, location = node.location };
+			} else if (type.IsInt()) {
+				node.value = new IntExpr { value = 0, computedType = type, location = node.location };
+			} else if (type.IsFloat()) {
+				node.value = new FloatExpr { value = 0, computedType = type, location = node.location };
+			} else if (type.IsString()) {
+				node.value = new StringExpr { value = "", computedType = type, location = node.location };
+			} else {
+				node.value = new NullExpr { computedType = type, location = node.location };
+			}
+		}
+		return null;
+	}
+}
+
+////////////////////////////////////////////////////////////////////////////////
 // Compiler
 ////////////////////////////////////////////////////////////////////////////////
 
@@ -1053,6 +1092,7 @@ public static class Compiler
 			new VisitorPass<Null>(new ComputeSymbolTypesPass(log)),
 			new VisitorPass<Null>(new ComputeTypesPass(log)),
 			new VisitorPass<Null>(new FlowValidationPass(log)),
+			new VisitorPass<Null>(new DefaultInitializePass()),
 		};
 		foreach (Pass pass in passes) {
 			if (!pass.Apply(log, module)) {
