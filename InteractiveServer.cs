@@ -8,7 +8,7 @@ using System.Collections.Generic;
 public class InteractiveServer
 {
 	private const int port = 8080;
-	private const string htmlExample = htmlLinkList;
+	private const string htmlExample = htmlVector;
 	private const string htmlLinkList = @"
 external {
   void print(string text)
@@ -267,7 +267,7 @@ public class NodeToStringVisitor : Visitor<string>
 		if (list.Count == 0) {
 			return indent + name + " = {}\n";
 		}
-		return indent + name + " = { " + string.Join(", ", list.ToArray()) + " }\n";
+		return indent + name + " = { " + list.Join(", ") + " }\n";
 	}
 	
 	private string Field<T>(string name, List<T> nodes) where T : Node
@@ -276,7 +276,7 @@ public class NodeToStringVisitor : Visitor<string>
 			return indent + name + " = {}\n";
 		}
 		Indent();
-		string items = string.Join("", nodes.ConvertAll(x => indent + x.Accept(this) + "\n").ToArray());
+		string items = nodes.ConvertAll(x => indent + x.Accept(this) + "\n").Join();
 		Dedent();
 		return indent + name + " = {\n" + items + indent + "}\n";
 	}

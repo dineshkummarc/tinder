@@ -277,6 +277,7 @@ public class BinaryExpr : Expr
 
 public class CallExpr : Expr
 {
+	public bool isCtor;
 	public Expr func;
 	public List<Expr> args;
 	

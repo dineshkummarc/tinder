@@ -15,7 +15,6 @@ public class JsTargetVisitor : Visitor<string>
 		{ UnaryOp.Negative, "-" },
 		{ UnaryOp.Not, "!" },
 	};
-	
 	private static readonly Dictionary<BinaryOp, string> binaryOpToString = new Dictionary<BinaryOp, string> {
 		{ BinaryOp.Assign, "=" },
 		
@@ -34,9 +33,8 @@ public class JsTargetVisitor : Visitor<string>
 		{ BinaryOp.LessThanEqual, "<=" },
 		{ BinaryOp.GreaterThanEqual, ">=" },
 	};
-	
+	// From https://developer.mozilla.org/en/JavaScript/Reference/Operators/Operator_Precedence
 	private static readonly Dictionary<BinaryOp, int> jsBinaryOpPrecedence = new Dictionary<BinaryOp, int> {
-		// From https://developer.mozilla.org/en/JavaScript/Reference/Operators/Operator_Precedence
 		{ BinaryOp.Multiply, 5 },
 		{ BinaryOp.Divide, 5 },
 		{ BinaryOp.Add, 6 },
@@ -51,8 +49,8 @@ public class JsTargetVisitor : Visitor<string>
 		{ BinaryOp.Or, 14 },
 		{ BinaryOp.Assign, 16 },
 	};
-	
 	private string indent = "";
+	private string prefix = "";
 	
 	private void Indent()
 	{
@@ -68,19 +66,22 @@ public class JsTargetVisitor : Visitor<string>
 	{
 		string text = "{\n";
 		Indent();
-		text += string.Join("", node.stmts.ConvertAll(x => x.Accept(this)).ToArray());
+		string oldPrefix = prefix;
+		prefix = "";
+		text += node.stmts.ConvertAll(x => x.Accept(this)).Join();
+		prefix = oldPrefix;
 		Dedent();
 		return text + indent + "}";
 	}
 
 	public override string Visit(Module node)
 	{
-		return string.Join("", node.block.stmts.ConvertAll(x => x.Accept(this)).ToArray());
+		return node.block.stmts.ConvertAll(x => x.Accept(this)).Join();
 	}
 
 	public override string Visit(IfStmt node)
 	{
-		return indent + "if (" + node.test.Accept(this) + ") " + node.thenBlock.Accept(this) + (
+		return indent + "if (" + node.test.Accept(this).StripParens() + ") " + node.thenBlock.Accept(this) + (
 			node.elseBlock == null ? "" : " else " + node.elseBlock.Accept(this)) + "\n";
 	}
 
@@ -91,7 +92,7 @@ public class JsTargetVisitor : Visitor<string>
 
 	public override string Visit(ExprStmt node)
 	{
-		return indent + node.value.Accept(this) + ";\n";
+		return indent + node.value.Accept(this).StripParens() + ";\n";
 	}
 	
 	public override string Visit(ExternalStmt node)
@@ -101,45 +102,50 @@ public class JsTargetVisitor : Visitor<string>
 	
 	public override string Visit(WhileStmt node)
 	{
-		return indent + "while (" + node.test.Accept(this) + ") " + node.block.Accept(this) + "\n";
+		return indent + "while (" + node.test.Accept(this).StripParens() + ") " + node.block.Accept(this) + "\n";
+	}
+	
+	private string DefineVar(Def node)
+	{
+		return (prefix.Length > 0 ? prefix : "var ") + node.name;
 	}
 	
 	public override string Visit(VarDef node)
 	{
-		return indent + "var " + node.name + (node.value == null ? "" : " = " + node.value.Accept(this).StripParens()) + ";\n";
+		return indent + DefineVar(node) + (node.value == null ? "" : " = " + node.value.Accept(this).StripParens()) + ";\n";
 	}
 
 	public override string Visit(FuncDef node)
 	{
-		return indent + "function " + node.name + "(" + string.Join(", ", node.argDefs.ConvertAll(x => x.name).ToArray()) +
-			") " + node.block.Accept(this) + "\n";
-	}
-	
-	private string PrintMembers(string prefix, List<Stmt> stmts)
-	{
-		string text = "";
-		foreach (Stmt stmt in stmts) {
-			if (stmt is ClassDef) {
-				ClassDef def = (ClassDef)stmt;
-				text += prefix + "." + def.name + " = function() {};\n";
-				text += PrintMembers(prefix + "." + def.name, def.block.stmts);
-			} else if (stmt is VarDef) {
-				VarDef def = (VarDef)stmt;
-				text += prefix + ".prototype." + def.name + " = " + (def.value == null ? "null" : def.value.Accept(this)) + ";\n";
-			} else if (stmt is FuncDef) {
-				FuncDef def = (FuncDef)stmt;
-				text += prefix + (def.isStatic ? "." : ".prototype.") + def.name + " = function(" + string.Join(", ",
-					def.argDefs.ConvertAll(x => x.name).ToArray()) + ") " + def.block.Accept(this) + ";\n";
-			} else {
-				text += stmt.Accept(this);
-			}
-		}
-		return text;
+		return indent + DefineVar(node) + " = function(" + node.argDefs.ConvertAll(x => x.name).Join(", ") +
+			") " + node.block.Accept(this) + ";\n";
 	}
 	
 	public override string Visit(ClassDef node)
 	{
-		return "function " + node.name + "() {}\n" + PrintMembers(node.name, node.block.stmts);
+		// Write out the class constructor
+		string text = indent + DefineVar(node) + " = function() {\n";
+		Indent();
+		foreach (Stmt stmt in node.block.stmts) {
+			if (stmt is VarDef) {
+				VarDef varDef = (VarDef)stmt;
+				text += indent + "this." + varDef.name + " = " + (varDef.value == null ? "null" : varDef.value.Accept(this).StripParens()) + ";\n";
+			}
+		}
+		Dedent();
+		text += indent + "};\n";
+		
+		// Write out members
+		string oldPrefix = prefix;
+		foreach (Stmt stmt in node.block.stmts) {
+			if (!(stmt is VarDef)) {
+				bool isStatic = (!(stmt is FuncDef) || ((FuncDef)stmt).isStatic);
+				prefix = oldPrefix + node.name + (isStatic ? "." : ".prototype.");
+				text += stmt.Accept(this);
+			}
+		}
+		prefix = oldPrefix;
+		return text;
 	}
 	
 	public override string Visit(NullExpr node)
@@ -203,7 +209,8 @@ public class JsTargetVisitor : Visitor<string>
 
 	public override string Visit(CallExpr node)
 	{
-		return node.func.Accept(this) + "(" + string.Join(", ", node.args.ConvertAll(x => x.Accept(this).StripParens()).ToArray()) + ")";
+		return (node.isCtor ? "new " : "") + node.func.Accept(this) + "(" +
+			node.args.ConvertAll(x => x.Accept(this).StripParens()).Join(", ") + ")";
 	}
 	
 	public override string Visit(CastExpr node)

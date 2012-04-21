@@ -605,6 +605,7 @@ public class ComputeTypesPass : DefaultVisitor
 		// Check for constructors
 		if (type is MetaType && argTypes.Count == 0 && ((MetaType)type).instanceType is ClassType) {
 			node.computedType = ((MetaType)type).instanceType;
+			node.isCtor = true;
 			return null;
 		}
 		

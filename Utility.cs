@@ -170,7 +170,7 @@ public static class Utility
 	public static string ToQuotedString(this string text)
 	{
 		List<char> chars = new List<char>(text.ToCharArray());
-		return "\"" + string.Join("", chars.ConvertAll(x => Quote(x, '"')).ToArray()) + "\"";
+		return "\"" + chars.ConvertAll(x => Quote(x, '"')).Join() + "\"";
 	}
 	
 	public static string ToQuotedChar(this int c)
@@ -239,7 +239,7 @@ public static class Utility
 	
 	public static string AsString(this List<Type> argTypes)
 	{
-		return "(" + string.Join(", ", argTypes.ConvertAll(arg => arg.ToString()).ToArray()) + ")";
+		return "(" + argTypes.ConvertAll(arg => arg.ToString()).Join(", ") + ")";
 	}
 	
 	public static bool IsBool(this Type type)
@@ -270,5 +270,10 @@ public static class Utility
 	public static string StripParens(this string text)
 	{
 		return text.StartsWith("(") && text.EndsWith(")") ? text.Substring(1, text.Length - 2) : text;
+	}
+	
+	public static string Join(this List<string> list, string separator = "")
+	{
+		return string.Join(separator, list.ToArray());
 	}
 }
