@@ -266,4 +266,9 @@ public static class Utility
 	{
 		return type.IsInt() || type.IsFloat();
 	}
+	
+	public static string StripParens(this string text)
+	{
+		return text.StartsWith("(") && text.EndsWith(")") ? text.Substring(1, text.Length - 2) : text;
+	}
 }

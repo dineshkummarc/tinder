@@ -11,6 +11,47 @@ public class JsTarget
 
 public class JsTargetVisitor : Visitor<string>
 {
+	private static readonly Dictionary<UnaryOp, string> unaryOpToString = new Dictionary<UnaryOp, string> {
+		{ UnaryOp.Negative, "-" },
+		{ UnaryOp.Not, "!" },
+	};
+	
+	private static readonly Dictionary<BinaryOp, string> binaryOpToString = new Dictionary<BinaryOp, string> {
+		{ BinaryOp.Assign, "=" },
+		
+		{ BinaryOp.And, "&&" },
+		{ BinaryOp.Or, "||" },
+		
+		{ BinaryOp.Add, "+" },
+		{ BinaryOp.Subtract, "-" },
+		{ BinaryOp.Multiply, "*" },
+		{ BinaryOp.Divide, "/" },
+		
+		{ BinaryOp.Equal, "==" },
+		{ BinaryOp.NotEqual, "!=" },
+		{ BinaryOp.LessThan, "<" },
+		{ BinaryOp.GreaterThan, ">" },
+		{ BinaryOp.LessThanEqual, "<=" },
+		{ BinaryOp.GreaterThanEqual, ">=" },
+	};
+	
+	private static readonly Dictionary<BinaryOp, int> jsBinaryOpPrecedence = new Dictionary<BinaryOp, int> {
+		// From https://developer.mozilla.org/en/JavaScript/Reference/Operators/Operator_Precedence
+		{ BinaryOp.Multiply, 5 },
+		{ BinaryOp.Divide, 5 },
+		{ BinaryOp.Add, 6 },
+		{ BinaryOp.Subtract, 6 },
+		{ BinaryOp.LessThan, 8 },
+		{ BinaryOp.LessThanEqual, 8 },
+		{ BinaryOp.GreaterThan, 8 },
+		{ BinaryOp.GreaterThanEqual, 8 },
+		{ BinaryOp.Equal, 9 },
+		{ BinaryOp.NotEqual, 9 },
+		{ BinaryOp.And, 13 },
+		{ BinaryOp.Or, 14 },
+		{ BinaryOp.Assign, 16 },
+	};
+	
 	private string indent = "";
 	
 	private void Indent()
@@ -45,7 +86,7 @@ public class JsTargetVisitor : Visitor<string>
 
 	public override string Visit(ReturnStmt node)
 	{
-		return indent + "return" + (node.value == null ? "" : " " + node.value.Accept(this)) + ";\n";
+		return indent + "return" + (node.value == null ? "" : " " + node.value.Accept(this).StripParens()) + ";\n";
 	}
 
 	public override string Visit(ExprStmt node)
@@ -65,7 +106,7 @@ public class JsTargetVisitor : Visitor<string>
 	
 	public override string Visit(VarDef node)
 	{
-		return indent + "var " + node.name + (node.value == null ? "" : " = " + node.value.Accept(this)) + ";\n";
+		return indent + "var " + node.name + (node.value == null ? "" : " = " + node.value.Accept(this).StripParens()) + ";\n";
 	}
 
 	public override string Visit(FuncDef node)
@@ -87,8 +128,8 @@ public class JsTargetVisitor : Visitor<string>
 				text += prefix + ".prototype." + def.name + " = " + (def.value == null ? "null" : def.value.Accept(this)) + ";\n";
 			} else if (stmt is FuncDef) {
 				FuncDef def = (FuncDef)stmt;
-				text += prefix + ".prototype." + def.name + " = function(" + string.Join(", ", def.argDefs.ConvertAll(x => x.name).ToArray()) +
-					") " + def.block.Accept(this) + ";\n";
+				text += prefix + (def.isStatic ? "." : ".prototype.") + def.name + " = function(" + string.Join(", ",
+					def.argDefs.ConvertAll(x => x.name).ToArray()) + ") " + def.block.Accept(this) + ";\n";
 			} else {
 				text += stmt.Accept(this);
 			}
@@ -143,18 +184,26 @@ public class JsTargetVisitor : Visitor<string>
 	
 	public override string Visit(UnaryExpr node)
 	{
-		return "(" + Constants.tokenToString[Constants.unaryOperators.enumToToken[node.op]] + node.value.Accept(this) + ")";
+		return "(" + unaryOpToString[node.op] + node.value.Accept(this) + ")";
 	}
 	
 	public override string Visit(BinaryExpr node)
 	{
-		return "(" + node.left.Accept(this) + " " + Constants.tokenToString[Constants.binaryOperators.enumToToken[node.op]] +
-			" " + node.right.Accept(this) + ")";
+		// Strip parentheses if they aren't needed
+		string left = node.left.Accept(this);
+		string right = node.right.Accept(this);
+		if (node.left is BinaryExpr && jsBinaryOpPrecedence[node.op] >= jsBinaryOpPrecedence[((BinaryExpr)node.left).op]) {
+			left = left.StripParens();
+		}
+		if (node.right is BinaryExpr && jsBinaryOpPrecedence[node.op] >= jsBinaryOpPrecedence[((BinaryExpr)node.right).op]) {
+			right = right.StripParens();
+		}
+		return "(" + left + " " + binaryOpToString[node.op] + " " + right + ")";
 	}
 
 	public override string Visit(CallExpr node)
 	{
-		return node.func.Accept(this) + "(" + string.Join(", ", node.args.ConvertAll(x => x.Accept(this)).ToArray()) + ")";
+		return node.func.Accept(this) + "(" + string.Join(", ", node.args.ConvertAll(x => x.Accept(this).StripParens()).ToArray()) + ")";
 	}
 	
 	public override string Visit(CastExpr node)

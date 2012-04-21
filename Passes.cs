@@ -603,7 +603,7 @@ public class ComputeTypesPass : DefaultVisitor
 		Type type = node.func.computedType;
 		
 		// Check for constructors
-		if (type is MetaType && argTypes.Count == 0) {
+		if (type is MetaType && argTypes.Count == 0 && ((MetaType)type).instanceType is ClassType) {
 			node.computedType = ((MetaType)type).instanceType;
 			return null;
 		}
