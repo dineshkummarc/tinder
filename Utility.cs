@@ -53,32 +53,36 @@ public static class Constants
 		{ TokenKind.And, 2, BinaryOp.And },
 		{ TokenKind.Or, 2, BinaryOp.Or },
 		
-		{ TokenKind.Equal, 3, BinaryOp.Equal },
-		{ TokenKind.NotEqual, 3, BinaryOp.NotEqual },
 		{ TokenKind.LessThan, 3, BinaryOp.LessThan },
 		{ TokenKind.GreaterThan, 3, BinaryOp.GreaterThan },
 		{ TokenKind.LessThanEqual, 3, BinaryOp.LessThanEqual },
 		{ TokenKind.GreaterThanEqual, 3, BinaryOp.GreaterThanEqual },
 		
-		{ TokenKind.Add, 4, BinaryOp.Add },
-		{ TokenKind.Subtract, 4, BinaryOp.Subtract },
+		{ TokenKind.Equal, 4, BinaryOp.Equal },
+		{ TokenKind.NotEqual, 4, BinaryOp.NotEqual },
 		
-		{ TokenKind.Multiply, 5, BinaryOp.Multiply },
-		{ TokenKind.Divide, 5, BinaryOp.Divide },
+		{ TokenKind.LShift, 5, BinaryOp.LShift },
+		{ TokenKind.RShift, 5, BinaryOp.RShift },
+		
+		{ TokenKind.Add, 6, BinaryOp.Add },
+		{ TokenKind.Subtract, 6, BinaryOp.Subtract },
+		
+		{ TokenKind.Multiply, 7, BinaryOp.Multiply },
+		{ TokenKind.Divide, 7, BinaryOp.Divide },
 	};
 	
 	// Table of unary operators mapping TokenKind <=> UnaryOp
 	public static readonly OperatorList<UnaryOp> unaryOperators = new OperatorList<UnaryOp> {
-		{ TokenKind.Subtract, 7, UnaryOp.Negative },
-		{ TokenKind.Not, 7, UnaryOp.Not },
+		{ TokenKind.Subtract, 9, UnaryOp.Negative },
+		{ TokenKind.Not, 9, UnaryOp.Not },
 	};
 	
 	// Operator precedence table for operators not in binaryOperators and unaryOperators
 	public static readonly Dictionary<TokenKind, int> operatorPrecedence = new Dictionary<TokenKind, int> {
-		{ TokenKind.As, 6 },
-		{ TokenKind.Dot, 8 },
-		{ TokenKind.LParen, 8 },
-		{ TokenKind.LParam, 8 },
+		{ TokenKind.As, 8 },
+		{ TokenKind.Dot, 10 },
+		{ TokenKind.LParen, 10 },
+		{ TokenKind.LParam, 10 },
 	};
 	
 	// Map all symbols, operators, and keywords to the equivalent TokenKind
@@ -99,6 +103,8 @@ public static class Constants
 		{ "-", TokenKind.Subtract },
 		{ "*", TokenKind.Multiply },
 		{ "/", TokenKind.Divide },
+		{ "<<", TokenKind.LShift },
+		{ ">>", TokenKind.RShift },
 		{ "==", TokenKind.Equal },
 		{ "!=", TokenKind.NotEqual },
 		{ "<=", TokenKind.LessThanEqual },

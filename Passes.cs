@@ -913,6 +913,13 @@ public class ComputeTypesPass : DefaultVisitor
 				}
 				break;
 		
+			case BinaryOp.LShift:
+			case BinaryOp.RShift:
+				if (left.IsInt() && right.IsInt() && SetUpBinaryOpHelper(node, false)) {
+					return true;
+				}
+				break;
+
 			case BinaryOp.Equal:
 			case BinaryOp.NotEqual:
 				if (SetUpBinaryOpHelper(node, true)) {

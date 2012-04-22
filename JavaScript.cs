@@ -26,6 +26,9 @@ public class JsTargetVisitor : Visitor<string>
 		{ BinaryOp.Multiply, "*" },
 		{ BinaryOp.Divide, "/" },
 		
+		{ BinaryOp.LShift, "<<" },
+		{ BinaryOp.RShift, ">>" },
+		
 		{ BinaryOp.Equal, "==" },
 		{ BinaryOp.NotEqual, "!=" },
 		{ BinaryOp.LessThan, "<" },
@@ -39,6 +42,8 @@ public class JsTargetVisitor : Visitor<string>
 		{ BinaryOp.Divide, 5 },
 		{ BinaryOp.Add, 6 },
 		{ BinaryOp.Subtract, 6 },
+		{ BinaryOp.LShift, 7 },
+		{ BinaryOp.RShift, 7 },
 		{ BinaryOp.LessThan, 8 },
 		{ BinaryOp.LessThanEqual, 8 },
 		{ BinaryOp.GreaterThan, 8 },

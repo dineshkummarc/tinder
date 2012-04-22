@@ -255,6 +255,9 @@ public enum BinaryOp
 	Multiply,
 	Divide,
 	
+	LShift,
+	RShift,
+	
 	Equal,
 	NotEqual,
 	LessThan,

@@ -37,6 +37,8 @@ public enum TokenKind
 	Subtract,
 	Multiply,
 	Divide,
+	LShift,
+	RShift,
 	Equal,
 	NotEqual,
 	LessThan,
@@ -117,12 +119,14 @@ public class Tokenizer
 		TokenKind.Int,
 		TokenKind.Float,
 		TokenKind.String,
+		TokenKind.RShift,
 	};
 	private static Dictionary<TokenKind, TokenKind> oppositeBracket = new Dictionary<TokenKind, TokenKind> {
 		{ TokenKind.RParen, TokenKind.LParen },
 		{ TokenKind.RBracket, TokenKind.LBracket },
 		{ TokenKind.RBrace, TokenKind.LBrace },
 		{ TokenKind.GreaterThan, TokenKind.LessThan },
+		{ TokenKind.RShift, TokenKind.LessThan },
 	};
 	private static List<TokenKind> leftBrackets = new List<TokenKind>(oppositeBracket.Values);
 	private static List<TokenKind> rightBrackets = new List<TokenKind>(oppositeBracket.Keys);
@@ -350,6 +354,20 @@ public class Tokenizer
 				// Keep track of the current bracket nesting and convert angle brackets to type parameter tokens
 				Token top = stack.Pop();
 				if (top.kind == TokenKind.LessThan) {
+					// Steal a greater-than symbol from right shift tokens
+					if (token.kind == TokenKind.RShift) {
+						tokens.Insert(i + 1, new Token {
+							kind = TokenKind.GreaterThan,
+							text = ">",
+							location = new Location {
+								file = file,
+								line = token.location.line,
+								column = token.location.column + 1
+							}
+						});
+						token.text = ">";
+					}
+					
 					top.kind = TokenKind.LParam;
 					token.kind = TokenKind.RParam;
 				}
