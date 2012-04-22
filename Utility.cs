@@ -63,6 +63,9 @@ public static class Constants
 		
 		{ TokenKind.LShift, 5, BinaryOp.LShift },
 		{ TokenKind.RShift, 5, BinaryOp.RShift },
+		{ TokenKind.BitAnd, 5, BinaryOp.BitAnd },
+		{ TokenKind.BitOr, 5, BinaryOp.BitOr },
+		{ TokenKind.BitXor, 5, BinaryOp.BitXor },
 		
 		{ TokenKind.Add, 6, BinaryOp.Add },
 		{ TokenKind.Subtract, 6, BinaryOp.Subtract },
@@ -106,6 +109,9 @@ public static class Constants
 		{ "/", TokenKind.Divide },
 		{ "<<", TokenKind.LShift },
 		{ ">>", TokenKind.RShift },
+		{ "&", TokenKind.BitAnd },
+		{ "|", TokenKind.BitOr },
+		{ "^", TokenKind.BitXor },
 		{ "==", TokenKind.Equal },
 		{ "!=", TokenKind.NotEqual },
 		{ "<=", TokenKind.LessThanEqual },
@@ -218,7 +224,7 @@ public static class Utility
 	
 	public static bool CanImplicitlyConvertTo(this Type from, Type to)
 	{
-		return (from.IsInt() && to.IsFloat()) || (from is NullType && to is ClassType);
+		return (from.IsInt() && to.IsFloat()) || (from is NullType && (to is ClassType || to is ListType));
 	}
 	
 	public static bool MatchesExactly(this List<Type> a, List<Type> b)

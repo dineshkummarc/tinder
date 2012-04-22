@@ -275,6 +275,9 @@ public enum BinaryOp
 	
 	LShift,
 	RShift,
+	BitAnd,
+	BitOr,
+	BitXor,
 	
 	Equal,
 	NotEqual,

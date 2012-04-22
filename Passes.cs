@@ -911,6 +911,24 @@ public class ComputeTypesPass : DefaultVisitor
 		return null;
 	}
 	
+	public override Null Visit(IfStmt node)
+	{
+		base.Visit(node);
+		if (!node.test.computedType.IsBool()) {
+			log.ErrorTypeMismatch(node.test.location, new PrimType { kind = PrimKind.Bool }, node.test.computedType);
+		}
+		return null;
+	}
+	
+	public override Null Visit(WhileStmt node)
+	{
+		base.Visit(node);
+		if (!node.test.computedType.IsBool()) {
+			log.ErrorTypeMismatch(node.test.location, new PrimType { kind = PrimKind.Bool }, node.test.computedType);
+		}
+		return null;
+	}
+	
 	private static int ExpectedTypeParamCount(Type type)
 	{
 		if (type is ListType && type.ItemType() == null) {
@@ -1043,6 +1061,9 @@ public class ComputeTypesPass : DefaultVisitor
 		
 			case BinaryOp.LShift:
 			case BinaryOp.RShift:
+			case BinaryOp.BitAnd:
+			case BinaryOp.BitOr:
+			case BinaryOp.BitXor:
 				if (left.IsInt() && right.IsInt() && SetUpBinaryOpHelper(node, false)) {
 					return true;
 				}

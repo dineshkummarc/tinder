@@ -28,6 +28,9 @@ public class JsTargetVisitor : Visitor<string>
 		
 		{ BinaryOp.LShift, "<<" },
 		{ BinaryOp.RShift, ">>" },
+		{ BinaryOp.BitAnd, "&" },
+		{ BinaryOp.BitOr, "|" },
+		{ BinaryOp.BitXor, "^" },
 		
 		{ BinaryOp.Equal, "==" },
 		{ BinaryOp.NotEqual, "!=" },
@@ -50,6 +53,9 @@ public class JsTargetVisitor : Visitor<string>
 		{ BinaryOp.GreaterThanEqual, 8 },
 		{ BinaryOp.Equal, 9 },
 		{ BinaryOp.NotEqual, 9 },
+		{ BinaryOp.BitAnd, 10 },
+		{ BinaryOp.BitOr, 11 },
+		{ BinaryOp.BitXor, 12 },
 		{ BinaryOp.And, 13 },
 		{ BinaryOp.Or, 14 },
 		{ BinaryOp.Assign, 16 },
@@ -208,18 +214,32 @@ public class JsTargetVisitor : Visitor<string>
 		return "(" + unaryOpToString[node.op] + node.value.Accept(this) + ")";
 	}
 	
+	private static int Precedence(BinaryExpr node)
+	{
+		if (node.op == BinaryOp.Divide && node.computedType.IsInt()) {
+			return jsBinaryOpPrecedence[BinaryOp.BitOr];
+		}
+		return jsBinaryOpPrecedence[node.op];
+	}
+	
 	public override string Visit(BinaryExpr node)
 	{
 		// Strip parentheses if they aren't needed
 		string left = node.left.Accept(this);
 		string right = node.right.Accept(this);
-		if (node.left is BinaryExpr && jsBinaryOpPrecedence[node.op] >= jsBinaryOpPrecedence[((BinaryExpr)node.left).op]) {
+		int precedence = jsBinaryOpPrecedence[node.op];
+		if (node.left is BinaryExpr && precedence >= Precedence((BinaryExpr)node.left)) {
 			left = left.StripParens();
 		}
-		if (node.right is BinaryExpr && jsBinaryOpPrecedence[node.op] >= jsBinaryOpPrecedence[((BinaryExpr)node.right).op]) {
+		if (node.right is BinaryExpr && precedence >= Precedence((BinaryExpr)node.right)) {
 			right = right.StripParens();
 		}
-		return "(" + left + " " + binaryOpToString[node.op] + " " + right + ")";
+		string text = left + " " + binaryOpToString[node.op] + " " + right;
+		if (node.op == BinaryOp.Divide && node.computedType.IsInt()) {
+			return "(" + text + " | 0)";
+		} else {
+			return "(" + text + ")";
+		}
 	}
 
 	public override string Visit(CallExpr node)
