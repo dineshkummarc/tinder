@@ -149,6 +149,14 @@ public abstract class Expr : Node
 	public Type computedType;
 }
 
+public class VarExpr : Expr
+{
+	public override T Accept<T>(Visitor<T> visitor)
+	{
+		return visitor.Visit(this);
+	}
+}
+
 public class NullExpr : Expr
 {
 	public override T Accept<T>(Visitor<T> visitor)
@@ -376,6 +384,8 @@ public abstract class Visitor<T>
 
 	public abstract T Visit(ClassDef node);
 	
+	public abstract T Visit(VarExpr node);
+	
 	public abstract T Visit(NullExpr node);
 
 	public abstract T Visit(ThisExpr node);
@@ -497,6 +507,11 @@ public class DefaultVisitor : Visitor<Null>
 	public override Null Visit(ClassDef node)
 	{
 		node.block.Accept(this);
+		return null;
+	}
+	
+	public override Null Visit(VarExpr node)
+	{
 		return null;
 	}
 	

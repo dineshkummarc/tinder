@@ -191,8 +191,8 @@ void main() {
 		
 		XmlDocument doc = new XmlDocument();
 		XmlNode xmlResults = createChild(doc, null, "Results");
-		XmlNode xmlWarnings = createChild(doc, xmlResults, "Warnings");
 		XmlNode xmlErrors = createChild(doc, xmlResults, "Errors");
+		XmlNode xmlWarnings = createChild(doc, xmlResults, "Warnings");
 		XmlNode xmlJs = createChild(doc, xmlResults, "JavaScript");
 		XmlNode xmlTree = createChild(doc, xmlResults, "Tree");
 		XmlNode xmlTokens = createChild(doc, xmlResults, "Tokens");
@@ -371,6 +371,11 @@ public class NodeToStringVisitor : Visitor<string>
 		string fields = Field("name", node.name) + Field("block", node.block);
 		Dedent();
 		return Wrap("ClassDef", fields);
+	}
+	
+	public override string Visit(VarExpr node)
+	{
+		return "VarExpr {}";
 	}
 	
 	public override string Visit(ThisExpr node)

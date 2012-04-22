@@ -65,7 +65,7 @@ public static class ErrorMessages
 		if (expected is ErrorType || found is ErrorType) {
 			return;
 		}
-		log.Error(location, "cannot implicitly cast " + WrapType(expected) + " to " + WrapType(found));
+		log.Error(location, "cannot implicitly convert " + WrapType(found) + " to " + WrapType(expected));
 	}
 	
 	public static void ErrorUnaryOpNotFound(this Log log, UnaryExpr node)
@@ -175,6 +175,11 @@ public static class ErrorMessages
 		} else {
 			log.Error(location, "expected " + expected + " type parameters but got " + found);
 		}
+	}
+	
+	public static void ErrorBadVar(this Log log, Location location)
+	{
+		log.Error(location, "\"var\" is not allowed here");
 	}
 	
 	public static void WarningDeadCode(this Log log, Location location)
@@ -465,6 +470,7 @@ public class ComputeSymbolTypesPass : DefaultVisitor
 {
 	private Log log;
 	private ComputeTypesPass helper;
+	private int functionCount;
 	
 	public ComputeSymbolTypesPass(Log log)
 	{
@@ -486,13 +492,19 @@ public class ComputeSymbolTypesPass : DefaultVisitor
 	public override Null Visit(VarDef node)
 	{
 		base.Visit(node);
-		node.symbol.type = GetInstanceType(node.type);
+		if (functionCount > 0) {
+			node.symbol.type = new ErrorType();
+		} else {
+			node.symbol.type = GetInstanceType(node.type);
+		}
 		return null;
 	}
 	
 	public override Null Visit(FuncDef node)
 	{
+		functionCount++;
 		base.Visit(node);
+		functionCount--;
 		node.symbol.type = new FuncType {
 			returnType = GetInstanceType(node.returnType),
 			argTypes = node.argDefs.ConvertAll(arg => GetInstanceType(arg.type))
@@ -527,6 +539,14 @@ public class ComputeTypesPass : DefaultVisitor
 	{
 		context = null;
 		node.computedType = new MetaType { instanceType = node.type };
+		return null;
+	}
+	
+	public override Null Visit(VarExpr node)
+	{
+		context = null;
+		log.ErrorBadVar(node.location);
+		node.computedType = new ErrorType();
 		return null;
 	}
 	
@@ -843,6 +863,13 @@ public class ComputeTypesPass : DefaultVisitor
 	
 	public override Null Visit(VarDef node)
 	{
+		// Handle type inference separately
+		if (node.type is VarExpr && node.value != null) {
+			node.value.Accept(this);
+			node.symbol.type = node.value.computedType;
+			return null;
+		}
+		
 		node.type.Accept(this);
 		if (!node.type.computedType.IsCompleteType()) {
 			log.ErrorNotCompleteType(node.type.location, node.type.computedType);
@@ -851,6 +878,7 @@ public class ComputeTypesPass : DefaultVisitor
 		} else {
 			node.symbol.type = node.type.computedType.InstanceType();
 			if (node.value != null) {
+				// Provide the variable type as the context to resolve the value type
 				context = new Context { targetType = node.symbol.type };
 				node.value.Accept(this);
 				if (!node.value.computedType.EqualsType(node.symbol.type)) {

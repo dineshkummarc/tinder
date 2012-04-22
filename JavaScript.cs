@@ -81,7 +81,7 @@ public class JsTargetVisitor : Visitor<string>
 
 	public override string Visit(Module node)
 	{
-		return node.block.stmts.ConvertAll(x => x.Accept(this)).Join();
+		return "\"use strict\";\n" + node.block.stmts.ConvertAll(x => x.Accept(this)).Join();
 	}
 
 	public override string Visit(IfStmt node)
@@ -153,6 +153,11 @@ public class JsTargetVisitor : Visitor<string>
 		return text;
 	}
 	
+	public override string Visit(VarExpr node)
+	{
+		throw new NotImplementedException();
+	}
+	
 	public override string Visit(NullExpr node)
 	{
 		return "null";
@@ -190,7 +195,7 @@ public class JsTargetVisitor : Visitor<string>
 	
 	public override string Visit(TypeExpr node)
 	{
-		return "/* " + node.type + " */";
+		throw new NotImplementedException();
 	}
 	
 	public override string Visit(ListExpr node)
@@ -225,7 +230,7 @@ public class JsTargetVisitor : Visitor<string>
 	
 	public override string Visit(ParamExpr node)
 	{
-		return node.type + "<" + node.typeParams.ConvertAll(x => x.Accept(this)).Join(", ") + ">";
+		throw new NotImplementedException();
 	}
 	
 	public override string Visit(CastExpr node)

@@ -58,6 +58,7 @@ public enum TokenKind
 	As,
 	External,
 	Static,
+	Var,
 	Null,
 	This,
 	True,
