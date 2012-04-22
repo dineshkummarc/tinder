@@ -183,6 +183,7 @@ public static class Parser
 		pratt.Get(TokenKind.As, Constants.operatorPrecedence[TokenKind.As]).infixParser = ParseCastExpr;
 		pratt.Get(TokenKind.Dot, Constants.operatorPrecedence[TokenKind.Dot]).infixParser = ParseMemberExpr;
 		pratt.Get(TokenKind.LParen, Constants.operatorPrecedence[TokenKind.LParen]).infixParser = ParseCallExpr;
+		pratt.Get(TokenKind.LParam, Constants.operatorPrecedence[TokenKind.LParam]).infixParser = ParseParamExpr;
 	}
 	
 	private static IntExpr ParseIntExpr(ParserContext context)
@@ -330,6 +331,34 @@ public static class Parser
 				return null;
 			}
 			node.args.Add(arg);
+		}
+		
+		return node;
+	}
+	
+	private static ParamExpr ParseParamExpr(ParserContext context, Expr left)
+	{
+		// Create the node
+		ParamExpr node = new ParamExpr {
+			location = context.CurrentToken().location,
+			type = left,
+			typeParams = new List<Expr>()
+		};
+		context.Next();
+		
+		// Parse the type parameter list
+		bool first = true;
+		while (!context.Consume(TokenKind.RParam)) {
+			if (first) {
+				first = false;
+			} else if (!context.Consume(TokenKind.Comma)) {
+				return null;
+			}
+			Expr arg = pratt.Parse(context);
+			if (arg == null) {
+				return null;
+			}
+			node.typeParams.Add(arg);
 		}
 		
 		return node;

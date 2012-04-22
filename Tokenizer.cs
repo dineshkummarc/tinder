@@ -73,6 +73,8 @@ public enum TokenKind
 	StringLit,
 	
 	// Other
+	LParam,
+	RParam,
 	Identifier,
 	Newline,
 	EndOfFile,
@@ -104,6 +106,27 @@ public class Token
 
 public class Tokenizer
 {
+	private static List<TokenKind> typeParamListTokenKinds = new List<TokenKind> {
+		TokenKind.Identifier,
+		TokenKind.Dot,
+		TokenKind.Comma,
+		TokenKind.LessThan,
+		TokenKind.GreaterThan,
+		TokenKind.Void,
+		TokenKind.Bool,
+		TokenKind.Int,
+		TokenKind.Float,
+		TokenKind.String,
+	};
+	private static Dictionary<TokenKind, TokenKind> oppositeBracket = new Dictionary<TokenKind, TokenKind> {
+		{ TokenKind.RParen, TokenKind.LParen },
+		{ TokenKind.RBracket, TokenKind.LBracket },
+		{ TokenKind.RBrace, TokenKind.LBrace },
+		{ TokenKind.GreaterThan, TokenKind.LessThan },
+	};
+	private static List<TokenKind> leftBrackets = new List<TokenKind>(oppositeBracket.Values);
+	private static List<TokenKind> rightBrackets = new List<TokenKind>(oppositeBracket.Keys);
+	
 	private static bool IsNumber(char c)
 	{
 		return c >= '0' && c <= '9';
@@ -291,24 +314,53 @@ public class Tokenizer
 		List<Token> tokens = RawTokenize(log, file, text);
 		Stack<Token> stack = new Stack<Token>();
 		
+		// Type parameters are able to be specified via angle brackets because
+		// of tokenizer tricks below. Some of the tricky cases are:
+		//
+		//     (x < y) > z
+		//     x < (y > z)
+		//     x < y and y > z
+		//     x < y<z>()
+		//
+		// These are handled by keeping track of nested brackets for (), [], {},
+		// and <> using a stack, and converting matching <> to type parameter
+		// start and end tokens. To handle the less-than operator, if anything
+		// other than an identifier, a dot, a comma, or an angle bracket is
+		// encountered, all less-than tokens on the top of the stack are discarded.
+		
 		for (int i = 0; i < tokens.Count; i++) {
 			Token token = tokens[i];
-			if (token.kind == TokenKind.LParen || token.kind == TokenKind.LBracket || token.kind == TokenKind.LBrace) {
-				// Keep track of the current bracket nesting
+			
+			if (token.kind == TokenKind.Identifier && Constants.stringToToken.ContainsKey(token.text)) {
+				// Convert identifiers to keywords
+				token.kind = Constants.stringToToken[token.text];
+			}
+			
+			if (!typeParamListTokenKinds.Contains(token.kind)) {
+				// Break out of all type parameter lists
+				while (stack.Count > 0 && stack.Peek().kind == TokenKind.LessThan) {
+					stack.Pop();
+				}
+			}
+			
+			if (leftBrackets.Contains(token.kind)) {
+				// Keep track of the current bracket nesting using a stack
 				stack.Push(token);
-			} else if (stack.Count > 0 && (token.kind == TokenKind.RParen || token.kind == TokenKind.RBracket || token.kind == TokenKind.RBrace)) {
-				// Keep track of the current bracket nesting
-				stack.Pop();
+			} else if (stack.Count > 0 && rightBrackets.Contains(token.kind)) {
+				// Keep track of the current bracket nesting and convert angle brackets to type parameter tokens
+				Token top = stack.Pop();
+				if (top.kind == TokenKind.LessThan) {
+					top.kind = TokenKind.LParam;
+					token.kind = TokenKind.RParam;
+				}
 			} else if (token.kind == TokenKind.Newline && stack.Count > 0 && stack.Peek().kind != TokenKind.LBrace) {
-				// Remove newlines inside "()" and "[]" but not "{}"
+				// Remove newlines inside "()" and "[]" but not "{}" (or "<>", but those are handled already)
 				tokens.RemoveAt(i--);
 			} else if (token.kind == TokenKind.Newline && i + 1 < tokens.Count && tokens[i + 1].kind == TokenKind.Newline) {
 				// Remove consecutive newlines (generated around comments)
 				token.text += tokens[i + 1].text;
 				tokens.RemoveAt(i + 1);
-			} else if (token.kind == TokenKind.Identifier && Constants.stringToToken.ContainsKey(token.text)) {
-				// Convert identifiers to keywords
-				token.kind = Constants.stringToToken[token.text];
+				i--;
 			} else if (token.kind == TokenKind.Backslash && i + 1 < tokens.Count && tokens[i + 1].kind == TokenKind.Newline) {
 				// Remove escaped newlines
 				tokens.RemoveRange(i, 2);

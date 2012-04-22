@@ -92,7 +92,7 @@ public static class ErrorMessages
 		if (funcType is ErrorType || argTypes.Exists(x => x is ErrorType)) {
 			return;
 		}
-		log.Error(location, "cannot call value of type \"" + funcType + "\" with arguments \"" + argTypes.AsString() + "\"");
+		log.Error(location, "cannot call value of type \"" + funcType + "\" with arguments \"(" + argTypes.Join() + ")\"");
 	}
 	
 	public static void ErrorMultipleOverloadsFound(this Log log, Location location, List<Type> argTypes)
@@ -100,7 +100,7 @@ public static class ErrorMessages
 		if (argTypes.Exists(x => x is ErrorType)) {
 			return;
 		}
-		log.Error(location, "multiple ambiguous overloads that match arguments \"" + argTypes.AsString() + "\"");
+		log.Error(location, "multiple ambiguous overloads that match arguments \"(" + argTypes.Join() + ")\"");
 	}
 	
 	public static void ErrorThisOutsideClass(this Log log, Location location)
@@ -140,6 +140,14 @@ public static class ErrorMessages
 	public static void ErrorMetaTypeExpr(this Log log, Location location)
 	{
 		log.Error(location, "free expression evaluates to type description");
+	}
+	
+	public static void ErrorTypeNotParameterizable(this Log log, Location location, Type type)
+	{
+		if (type is ErrorType) {
+			return;
+		}
+		log.Error(location, "the type \"" + type + "\" does not have type parameters");
 	}
 	
 	public static void WarningDeadCode(this Log log, Location location)
@@ -442,7 +450,7 @@ public class ComputeSymbolTypesPass : DefaultVisitor
 		helper.scope = scope;
 		node.Accept(helper);
 		if (node.computedType is MetaType) {
-			return ((MetaType)node.computedType).instanceType;
+			return node.computedType.InstanceType();
 		}
 		log.ErrorNotType(node.location, node.computedType);
 		return new ErrorType();
@@ -608,8 +616,8 @@ public class ComputeTypesPass : DefaultVisitor
 		Type type = node.func.computedType;
 		
 		// Check for constructors
-		if (type is MetaType && argTypes.Count == 0 && ((MetaType)type).instanceType is ClassType) {
-			node.computedType = ((MetaType)type).instanceType;
+		if (type is MetaType && argTypes.Count == 0 && type.InstanceType() is ClassType) {
+			node.computedType = type.InstanceType();
 			node.isCtor = true;
 			return null;
 		}
@@ -630,6 +638,38 @@ public class ComputeTypesPass : DefaultVisitor
 		return null;
 	}
 	
+	public override Null Visit(ParamExpr node)
+	{
+		overloadContext = null;
+		node.computedType = new ErrorType();
+		base.Visit(node);
+		
+		// Check for a valid type parameter list
+		if (!(node.type.computedType is MetaType)) {
+			log.ErrorNotType(node.type.location, node.type.computedType);
+		} else if (!IsParameterizableType(node.type.computedType.InstanceType())) {
+			log.ErrorTypeNotParameterizable(node.location, node.type.computedType.InstanceType());
+		} else {
+			bool valid = true;
+			foreach (Expr expr in node.typeParams) {
+				if (!(expr.computedType is MetaType)) {
+					log.ErrorNotType(expr.location, expr.computedType);
+					valid = false;
+				}
+			}
+			if (valid) {
+				node.computedType = new MetaType {
+					instanceType = new ParamType {
+						type = node.type.computedType.InstanceType(),
+						typeParams = node.typeParams.ConvertAll(x => x.computedType.InstanceType())
+					}
+				};
+			}
+		}
+		
+		return null;
+	}
+	
 	public override Null Visit(CastExpr node)
 	{
 		overloadContext = null;
@@ -640,7 +680,7 @@ public class ComputeTypesPass : DefaultVisitor
 		if (!(node.target.computedType is MetaType)) {
 			log.ErrorNotType(node.location, node.target.computedType);
 		} else {
-			Type targetType = ((MetaType)node.target.computedType).instanceType;
+			Type targetType = node.target.computedType.InstanceType();
 			if (!IsValidCast(node.value.computedType, targetType)) {
 				log.ErrorInvalidCast(node.value.location, node.value.computedType, targetType);
 			} else {
@@ -663,7 +703,7 @@ public class ComputeTypesPass : DefaultVisitor
 		LookupKind kind = LookupKind.InstanceMember;
 		Type type = node.obj.computedType;
 		if (type is MetaType) {
-			type = ((MetaType)type).instanceType;
+			type = type.InstanceType();
 			kind = LookupKind.StaticMember;
 		}
 		
@@ -715,7 +755,7 @@ public class ComputeTypesPass : DefaultVisitor
 		if (!(node.type.computedType is MetaType)) {
 			log.ErrorNotType(node.type.location, node.type.computedType);
 		} else {
-			node.symbol.type = ((MetaType)node.type.computedType).instanceType;
+			node.symbol.type = node.type.computedType.InstanceType();
 			if (node.value != null && !node.value.computedType.EqualsType(node.symbol.type)) {
 				if (node.value.computedType.CanImplicitlyConvertTo(node.symbol.type)) {
 					node.value = InsertCast(node.value, node.symbol.type);
@@ -743,6 +783,12 @@ public class ComputeTypesPass : DefaultVisitor
 		base.Visit(node);
 		thisType = old;
 		return null;
+	}
+	
+	private static bool IsParameterizableType(Type type)
+	{
+		// No parameterizable types yet
+		return false;
 	}
 	
 	private void ResolveOverloads(Expr node, List<Type> argTypes)
@@ -1051,7 +1097,7 @@ public class DefaultInitializePass : DefaultVisitor
 	public override Null Visit(VarDef node)
 	{
 		if (node.value == null) {
-			Type type = ((MetaType)node.type.computedType).instanceType;
+			Type type = node.type.computedType.InstanceType();
 			if (type.IsBool()) {
 				node.value = new BoolExpr { value = false, computedType = type, location = node.location };
 			} else if (type.IsInt()) {

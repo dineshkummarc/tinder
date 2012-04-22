@@ -59,7 +59,9 @@ public class FuncType : Type
 	
 	public override string ToString()
 	{
-		return returnType + " function" + argTypes.AsString();
+		List<Type> types = new List<Type> { returnType };
+		types.AddRange(argTypes);
+		return "function<" + types.Join() + ">";
 	}
 }
 
@@ -84,7 +86,7 @@ public class MetaType : Type
 	
 	public override bool EqualsType(Type other)
 	{
-		return other is MetaType && instanceType.EqualsType(((MetaType)other).instanceType);
+		return other is MetaType && instanceType.EqualsType(other.InstanceType());
 	}
 	
 	public override string ToString()
@@ -131,6 +133,23 @@ public class ErrorType : Type
 	public override string ToString()
 	{
 		return "<error>";
+	}
+}
+
+public class ParamType : Type
+{
+	public Type type;
+	public List<Type> typeParams;
+	
+	public override bool EqualsType(Type other)
+	{
+		return other is ParamType && type.EqualsType(((ParamType)other).type) &&
+			typeParams.MatchesExactly(((ParamType)other).typeParams);
+	}
+	
+	public override string ToString()
+	{
+		return type + "<" + typeParams.Join() + ">";
 	}
 }
 

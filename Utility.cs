@@ -78,6 +78,7 @@ public static class Constants
 		{ TokenKind.As, 6 },
 		{ TokenKind.Dot, 8 },
 		{ TokenKind.LParen, 8 },
+		{ TokenKind.LParam, 8 },
 	};
 	
 	// Map all symbols, operators, and keywords to the equivalent TokenKind
@@ -237,9 +238,9 @@ public static class Utility
 		return true;
 	}
 	
-	public static string AsString(this List<Type> argTypes)
+	public static string Join(this List<Type> argTypes)
 	{
-		return "(" + argTypes.ConvertAll(arg => arg.ToString()).Join(", ") + ")";
+		return argTypes.ConvertAll(arg => arg.ToString()).Join(", ");
 	}
 	
 	public static bool IsBool(this Type type)
@@ -265,6 +266,11 @@ public static class Utility
 	public static bool IsNumeric(this Type type)
 	{
 		return type.IsInt() || type.IsFloat();
+	}
+	
+	public static Type InstanceType(this Type type)
+	{
+		return ((MetaType)type).instanceType;
 	}
 	
 	public static string StripParens(this string text)

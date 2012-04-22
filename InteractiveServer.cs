@@ -437,6 +437,14 @@ public class NodeToStringVisitor : Visitor<string>
 		return Wrap("CallExpr", fields);
 	}
 	
+	public override string Visit(ParamExpr node)
+	{
+		Indent();
+		string fields = Field("type", node.type) + Field("typeParams", node.typeParams);
+		Dedent();
+		return Wrap("ParamExpr", fields);
+	}
+	
 	public override string Visit(CastExpr node)
 	{
 		Indent();

@@ -287,6 +287,17 @@ public class CallExpr : Expr
 	}
 }
 
+public class ParamExpr : Expr
+{
+	public Expr type;
+	public List<Expr> typeParams;
+	
+	public override T Accept<T>(Visitor<T> visitor)
+	{
+		return visitor.Visit(this);
+	}
+}
+
 public class CastExpr : Expr
 {
 	public Expr value;
@@ -362,6 +373,8 @@ public abstract class Visitor<T>
 	public abstract T Visit(BinaryExpr node);
 
 	public abstract T Visit(CallExpr node);
+	
+	public abstract T Visit(ParamExpr node);
 	
 	public abstract T Visit(CastExpr node);
 	
@@ -511,11 +524,18 @@ public class DefaultVisitor : Visitor<Null>
 		node.right.Accept(this);
 		return null;
 	}
-
+	
 	public override Null Visit(CallExpr node)
 	{
 		node.func.Accept(this);
 		VisitAll(node.args);
+		return null;
+	}
+	
+	public override Null Visit(ParamExpr node)
+	{
+		node.type.Accept(this);
+		VisitAll(node.typeParams);
 		return null;
 	}
 	

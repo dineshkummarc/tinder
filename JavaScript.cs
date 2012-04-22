@@ -213,9 +213,14 @@ public class JsTargetVisitor : Visitor<string>
 			node.args.ConvertAll(x => x.Accept(this).StripParens()).Join(", ") + ")";
 	}
 	
+	public override string Visit(ParamExpr node)
+	{
+		return node.type + "<" + node.typeParams.ConvertAll(x => x.Accept(this)).Join(", ") + ">";
+	}
+	
 	public override string Visit(CastExpr node)
 	{
-		if (node.value.computedType.IsFloat() && ((MetaType)node.target.computedType).instanceType.IsInt()) {
+		if (node.value.computedType.IsFloat() && node.target.computedType.InstanceType().IsInt()) {
 			return "(" + node.value.Accept(this) + " | 0)";
 		}
 		return node.value.Accept(this);
