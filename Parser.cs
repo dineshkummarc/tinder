@@ -164,7 +164,8 @@ public static class Parser
 		pratt.Get(TokenKind.FloatLit).prefixParser = ParseFloatExpr;
 		
 		// Types
-		pratt.Literal(TokenKind.Void, ParseVoidType);
+		pratt.Literal(TokenKind.Void, (Token token) => new TypeExpr { location = token.location, type = new VoidType() });
+		pratt.Literal(TokenKind.List, (Token token) => new TypeExpr { location = token.location, type = new ListType() });
 		pratt.Literal(TokenKind.Bool, ParsePrimType);
 		pratt.Literal(TokenKind.Int, ParsePrimType);
 		pratt.Literal(TokenKind.Float, ParsePrimType);
@@ -180,10 +181,12 @@ public static class Parser
 		
 		// Parsers requiring special behavior
 		pratt.Get(TokenKind.LParen).prefixParser = ParseGroup;
+		pratt.Get(TokenKind.LBracket).prefixParser = ParseListExpr;
 		pratt.Get(TokenKind.As, Constants.operatorPrecedence[TokenKind.As]).infixParser = ParseCastExpr;
 		pratt.Get(TokenKind.Dot, Constants.operatorPrecedence[TokenKind.Dot]).infixParser = ParseMemberExpr;
 		pratt.Get(TokenKind.LParen, Constants.operatorPrecedence[TokenKind.LParen]).infixParser = ParseCallExpr;
 		pratt.Get(TokenKind.LParam, Constants.operatorPrecedence[TokenKind.LParam]).infixParser = ParseParamExpr;
+		pratt.Get(TokenKind.LBracket, Constants.operatorPrecedence[TokenKind.LBracket]).infixParser = ParseIndexExpr;
 	}
 	
 	private static IntExpr ParseIntExpr(ParserContext context)
@@ -226,22 +229,14 @@ public static class Parser
 		};
 	}
 	
-	private static TypeExpr ParseVoidType(Token token)
-	{
-		return new TypeExpr {
-			location = token.location,
-			type = new MetaType { instanceType = new VoidType() }
-		};
-	}
-	
 	private static TypeExpr ParsePrimType(Token token)
 	{
 		return new TypeExpr {
 			location = token.location,
-			type = new MetaType { instanceType = new PrimType { kind = Constants.tokenToPrim[token.kind] } }
+			type = new PrimType { kind = Constants.tokenToPrim[token.kind] }
 		};
 	}
-
+	
 	private static UnaryExpr ParsePrefixExpr(Token token, Expr value)
 	{
 		return new UnaryExpr {
@@ -308,6 +303,33 @@ public static class Parser
 		return node;
 	}
 	
+	private static ListExpr ParseListExpr(ParserContext context)
+	{
+		// Create the node
+		ListExpr node = new ListExpr {
+			location = context.CurrentToken().location,
+			items = new List<Expr>()
+		};
+		context.Next();
+		
+		// Parse the item list
+		bool first = true;
+		while (!context.Consume(TokenKind.RBracket)) {
+			if (first) {
+				first = false;
+			} else if (!context.Consume(TokenKind.Comma)) {
+				return null;
+			}
+			Expr item = pratt.Parse(context);
+			if (item == null) {
+				return null;
+			}
+			node.items.Add(item);
+		}
+		
+		return node;
+	}
+	
 	private static CallExpr ParseCallExpr(ParserContext context, Expr left)
 	{
 		// Create the node
@@ -346,19 +368,38 @@ public static class Parser
 		};
 		context.Next();
 		
-		// Parse the type parameter list
-		bool first = true;
+		// Parse the type parameter list with at least one parameter
+		Expr param = pratt.Parse(context);
+		if (param == null) {
+			return null;
+		}
+		node.typeParams.Add(param);
 		while (!context.Consume(TokenKind.RParam)) {
-			if (first) {
-				first = false;
-			} else if (!context.Consume(TokenKind.Comma)) {
+			if (!context.Consume(TokenKind.Comma)) {
 				return null;
 			}
-			Expr arg = pratt.Parse(context);
-			if (arg == null) {
+			param = pratt.Parse(context);
+			if (param == null) {
 				return null;
 			}
-			node.typeParams.Add(arg);
+			node.typeParams.Add(param);
+		}
+		
+		return node;
+	}
+	
+	private static Expr ParseIndexExpr(ParserContext context, Expr left)
+	{
+		// Create the node
+		IndexExpr node = new IndexExpr {
+			location = context.CurrentToken().location,
+			obj = left
+		};
+		context.Next();
+		
+		// Parse the index
+		if ((node.index = pratt.Parse(context)) == null || !context.Consume(TokenKind.RBracket)) {
+			return null;
 		}
 		
 		return node;

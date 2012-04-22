@@ -83,6 +83,7 @@ public static class Constants
 		{ TokenKind.Dot, 10 },
 		{ TokenKind.LParen, 10 },
 		{ TokenKind.LParam, 10 },
+		{ TokenKind.LBracket, 10 },
 	};
 	
 	// Map all symbols, operators, and keywords to the equivalent TokenKind
@@ -133,6 +134,7 @@ public static class Constants
 		{ "int", TokenKind.Int },
 		{ "float", TokenKind.Float },
 		{ "string", TokenKind.String },
+		{ "list", TokenKind.List },
 	};
 	
 	// Map tokens for primitive types to the equivalent PrimKind
@@ -272,6 +274,21 @@ public static class Utility
 	public static bool IsNumeric(this Type type)
 	{
 		return type.IsInt() || type.IsFloat();
+	}
+	
+	public static bool HasFreeParams(this Type type)
+	{
+		return type is ListType && type.ItemType() == null;
+	}
+	
+	public static bool IsCompleteType(this Type type)
+	{
+		return type is MetaType && !type.InstanceType().HasFreeParams();
+	}
+	
+	public static Type ItemType(this Type type)
+	{
+		return ((ListType)type).itemType;
 	}
 	
 	public static Type InstanceType(this Type type)

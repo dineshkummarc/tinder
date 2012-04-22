@@ -67,6 +67,7 @@ public enum TokenKind
 	Int,
 	Float,
 	String,
+	List,
 	
 	// Literals
 	IntLit,
@@ -119,6 +120,7 @@ public class Tokenizer
 		TokenKind.Int,
 		TokenKind.Float,
 		TokenKind.String,
+		TokenKind.List,
 		TokenKind.RShift,
 	};
 	private static Dictionary<TokenKind, TokenKind> oppositeBracket = new Dictionary<TokenKind, TokenKind> {
@@ -351,7 +353,7 @@ public class Tokenizer
 				// Keep track of the current bracket nesting using a stack
 				stack.Push(token);
 			} else if (stack.Count > 0 && rightBrackets.Contains(token.kind)) {
-				// Keep track of the current bracket nesting and convert angle brackets to type parameter tokens
+				// Keep track of the current bracket nesting
 				Token top = stack.Pop();
 				if (top.kind == TokenKind.LessThan) {
 					// Steal a greater-than symbol from right shift tokens
@@ -368,6 +370,7 @@ public class Tokenizer
 						token.text = ">";
 					}
 					
+					// Convert angle brackets to type parameter tokens
 					top.kind = TokenKind.LParam;
 					token.kind = TokenKind.RParam;
 				}
@@ -381,7 +384,7 @@ public class Tokenizer
 				i--;
 			} else if (token.kind == TokenKind.Backslash && i + 1 < tokens.Count && tokens[i + 1].kind == TokenKind.Newline) {
 				// Remove escaped newlines
-				tokens.RemoveRange(i, 2);
+				tokens.RemoveRange(i--, 2);
 			}
 		}
 		

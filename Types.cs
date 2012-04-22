@@ -46,6 +46,21 @@ public class PrimType : Type
 	}
 }
 
+public class ListType : Type
+{
+	public Type itemType;
+	
+	public override bool EqualsType(Type other)
+	{
+		return other is ListType && (itemType == other.ItemType() || itemType.EqualsType(other.ItemType()));
+	}
+	
+	public override string ToString()
+	{
+		return "list" + (itemType == null ? "" : "<" + itemType + ">");
+	}
+}
+
 public class FuncType : Type
 {
 	public Type returnType;
@@ -119,7 +134,7 @@ public class NullType : Type
 	
 	public override string ToString()
 	{
-		return "<null>";
+		return "null";
 	}
 }
 
@@ -133,23 +148,6 @@ public class ErrorType : Type
 	public override string ToString()
 	{
 		return "<error>";
-	}
-}
-
-public class ParamType : Type
-{
-	public Type type;
-	public List<Type> typeParams;
-	
-	public override bool EqualsType(Type other)
-	{
-		return other is ParamType && type.EqualsType(((ParamType)other).type) &&
-			typeParams.MatchesExactly(((ParamType)other).typeParams);
-	}
-	
-	public override string ToString()
-	{
-		return type + "<" + typeParams.Join() + ">";
 	}
 }
 

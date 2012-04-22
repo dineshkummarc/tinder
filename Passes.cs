@@ -7,6 +7,14 @@ using System.Collections.Generic;
 
 public static class ErrorMessages
 {
+	private static string WrapType(Type type)
+	{
+		if (type is MetaType) {
+			return "type \"" + type.InstanceType() + "\"";
+		}
+		return "value of type \"" + type + "\"";
+	}
+	
 	public static void ErrorRedefinition(this Log log, Location location, string name)
 	{
 		log.Error(location, "redefinition of " + name + " in the same scope");
@@ -36,12 +44,20 @@ public static class ErrorMessages
 		log.Error(location, "reference to undefined symbol \"" + name + "\"");
 	}
 	
-	public static void ErrorNotType(this Log log, Location location, Type type)
+	public static void ErrorNotCompleteType(this Log log, Location location, Type type)
 	{
 		if (type is ErrorType) {
 			return;
 		}
-		log.Error(location, "value of type \"" + type + "\" is not a type");
+		log.Error(location, WrapType(type) + " is not a " + (type is MetaType ? "complete type" : "type"));
+	}
+	
+	public static void ErrorBadVariableType(this Log log, Location location, Type type)
+	{
+		if (type is ErrorType) {
+			return;
+		}
+		log.Error(location, "variables can not have type \"" + type + "\"");
 	}
 	
 	public static void ErrorTypeMismatch(this Log log, Location location, Type expected, Type found)
@@ -49,7 +65,7 @@ public static class ErrorMessages
 		if (expected is ErrorType || found is ErrorType) {
 			return;
 		}
-		log.Error(location, "expected value of type \"" + expected + "\" but found value of type \"" + found + "\"");
+		log.Error(location, "cannot implicitly cast " + WrapType(expected) + " to " + WrapType(found));
 	}
 	
 	public static void ErrorUnaryOpNotFound(this Log log, UnaryExpr node)
@@ -92,7 +108,7 @@ public static class ErrorMessages
 		if (funcType is ErrorType || argTypes.Exists(x => x is ErrorType)) {
 			return;
 		}
-		log.Error(location, "cannot call value of type \"" + funcType + "\" with arguments \"(" + argTypes.Join() + ")\"");
+		log.Error(location, "cannot call " + WrapType(funcType) + " with arguments \"(" + argTypes.Join() + ")\"");
 	}
 	
 	public static void ErrorMultipleOverloadsFound(this Log log, Location location, List<Type> argTypes)
@@ -137,17 +153,28 @@ public static class ErrorMessages
 		log.Error(location, "cannot resolve overloaded function without context");
 	}
 	
+	public static void ErrorNoListContext(this Log log, Location location)
+	{
+		log.Error(location, "cannot resolve type of list literal without context");
+	}
+	
 	public static void ErrorMetaTypeExpr(this Log log, Location location)
 	{
 		log.Error(location, "free expression evaluates to type description");
 	}
 	
-	public static void ErrorTypeNotParameterizable(this Log log, Location location, Type type)
+	public static void ErrorBadTypeParamCount(this Log log, Location location, int expected, int found, Type type)
 	{
 		if (type is ErrorType) {
 			return;
 		}
-		log.Error(location, "the type \"" + type + "\" does not have type parameters");
+		if (expected == 0) {
+			log.Error(location, "the type \"" + type + "\" does not have free type parameters");
+		} else if (found == 0) {
+			log.Error(location, "the type \"" + type + "\" requires type parameters");
+		} else {
+			log.Error(location, "expected " + expected + " type parameters but got " + found);
+		}
 	}
 	
 	public static void WarningDeadCode(this Log log, Location location)
@@ -449,10 +476,10 @@ public class ComputeSymbolTypesPass : DefaultVisitor
 	{
 		helper.scope = scope;
 		node.Accept(helper);
-		if (node.computedType is MetaType) {
+		if (node.computedType.IsCompleteType()) {
 			return node.computedType.InstanceType();
 		}
-		log.ErrorNotType(node.location, node.computedType);
+		log.ErrorNotCompleteType(node.location, node.computedType);
 		return new ErrorType();
 	}
 	
@@ -480,10 +507,16 @@ public class ComputeSymbolTypesPass : DefaultVisitor
 
 public class ComputeTypesPass : DefaultVisitor
 {
+	public class Context
+	{
+		public List<Type> argTypes;
+		public Type targetType;
+	}
+	
 	private Log log;
 	private Type returnType;
 	private ClassType thisType;
-	public List<Type> overloadContext;
+	public Context context;
 	
 	public ComputeTypesPass(Log log)
 	{
@@ -492,21 +525,21 @@ public class ComputeTypesPass : DefaultVisitor
 	
 	public override Null Visit(TypeExpr node)
 	{
-		overloadContext = null;
-		node.computedType = node.type;
+		context = null;
+		node.computedType = new MetaType { instanceType = node.type };
 		return null;
 	}
 	
 	public override Null Visit(NullExpr node)
 	{
-		overloadContext = null;
+		context = null;
 		node.computedType = new NullType();
 		return null;
 	}
 
 	public override Null Visit(ThisExpr node)
 	{
-		overloadContext = null;
+		context = null;
 		node.computedType = new ErrorType();
 		if (thisType != null) {
 			node.computedType = thisType;
@@ -518,38 +551,38 @@ public class ComputeTypesPass : DefaultVisitor
 
 	public override Null Visit(BoolExpr node)
 	{
-		overloadContext = null;
+		context = null;
 		node.computedType = new PrimType { kind = PrimKind.Bool };
 		return null;
 	}
 	
 	public override Null Visit(IntExpr node)
 	{
-		overloadContext = null;
+		context = null;
 		node.computedType = new PrimType { kind = PrimKind.Int };
 		return null;
 	}
 
 	public override Null Visit(FloatExpr node)
 	{
-		overloadContext = null;
+		context = null;
 		node.computedType = new PrimType { kind = PrimKind.Float };
 		return null;
 	}
 
 	public override Null Visit(StringExpr node)
 	{
-		overloadContext = null;
+		context = null;
 		node.computedType = new PrimType { kind = PrimKind.String };
 		return null;
 	}
 	
 	public override Null Visit(IdentExpr node)
 	{
-		List<Type> providedOverloadContext = overloadContext;
+		List<Type> argTypes = (context == null ? null : context.argTypes);
 		
 		// Perform the symbol lookup
-		overloadContext = null;
+		context = null;
 		node.computedType = new ErrorType();
 		node.symbol = scope.Lookup(node.name, LookupKind.Normal);
 		if (node.symbol != null) {
@@ -559,14 +592,49 @@ public class ComputeTypesPass : DefaultVisitor
 		}
 		
 		// Perform overload resolution using information we were provided
-		ResolveOverloads(node, providedOverloadContext);
+		ResolveOverloads(node, argTypes);
 		
+		return null;
+	}
+	
+	public override Null Visit(ListExpr node)
+	{
+		node.computedType = new ErrorType();
+		
+		// Make sure we know what type the list items are supposed to be
+		Type targetType = (context == null ? null : context.targetType);
+		if (targetType == null) {
+			log.ErrorNoListContext(node.location);
+			return null;
+		}
+		if (!(targetType is ListType)) {
+			log.ErrorTypeMismatch(node.location, targetType, new ListType());
+			return null;
+		}
+		Type itemType = targetType.ItemType();
+		
+		// Make sure all items can be converted to that type
+		Context itemTypeContext = new Context { targetType = itemType };
+		for (int i = 0; i < node.items.Count; i++) {
+			Expr item = node.items[i];
+			context = itemTypeContext;
+			item.Accept(this);
+			if (!item.computedType.EqualsType(itemType)) {
+				if (item.computedType.CanImplicitlyConvertTo(itemType)) {
+					node.items[i] = InsertCast(item, itemType);
+				} else {
+					log.ErrorTypeMismatch(node.location, itemType, item.computedType);
+				}
+			}
+		}
+		
+		node.computedType = new ListType { itemType = itemType };
 		return null;
 	}
 	
 	public override Null Visit(UnaryExpr node)
 	{
-		overloadContext = null;
+		context = null;
 		node.computedType = new ErrorType();
 		base.Visit(node);
 		
@@ -592,7 +660,7 @@ public class ComputeTypesPass : DefaultVisitor
 	
 	public override Null Visit(BinaryExpr node)
 	{
-		overloadContext = null;
+		context = null;
 		node.computedType = new ErrorType();
 		base.Visit(node);
 		if (!SetUpBinaryOp(node)) {
@@ -603,7 +671,7 @@ public class ComputeTypesPass : DefaultVisitor
 
 	public override Null Visit(CallExpr node)
 	{
-		overloadContext = null;
+		context = null;
 		node.computedType = new ErrorType();
 		
 		// Visit the arguments first to get context for resolving overloads
@@ -611,12 +679,12 @@ public class ComputeTypesPass : DefaultVisitor
 		List<Type> argTypes = node.args.ConvertAll(arg => arg.computedType);
 		
 		// Visit the function last and provide the overload resolving context
-		overloadContext = argTypes;
+		context = new Context { argTypes = argTypes };
 		node.func.Accept(this);
 		Type type = node.func.computedType;
 		
 		// Check for constructors
-		if (type is MetaType && argTypes.Count == 0 && type.InstanceType() is ClassType) {
+		if (type.IsCompleteType() && argTypes.Count == 0 && type.InstanceType() is ClassType) {
 			node.computedType = type.InstanceType();
 			node.isCtor = true;
 			return null;
@@ -640,31 +708,33 @@ public class ComputeTypesPass : DefaultVisitor
 	
 	public override Null Visit(ParamExpr node)
 	{
-		overloadContext = null;
+		context = null;
 		node.computedType = new ErrorType();
 		base.Visit(node);
 		
-		// Check for a valid type parameter list
+		// Check type parameters first
+		foreach (Expr expr in node.typeParams) {
+			if (!expr.computedType.IsCompleteType()) {
+				log.ErrorNotCompleteType(expr.location, expr.computedType);
+				return null;
+			}
+		}
+		
+		// Check type next, using type parameters to validate
 		if (!(node.type.computedType is MetaType)) {
-			log.ErrorNotType(node.type.location, node.type.computedType);
-		} else if (!IsParameterizableType(node.type.computedType.InstanceType())) {
-			log.ErrorTypeNotParameterizable(node.location, node.type.computedType.InstanceType());
+			log.ErrorNotCompleteType(node.type.location, node.type.computedType);
+			return null;
+		}
+		Type type = node.type.computedType.InstanceType();
+		int paramCountFound = node.typeParams.Count;
+		int paramCountExpected = ExpectedTypeParamCount(type);
+		node.computedType = new ErrorType();
+		if (paramCountFound != paramCountExpected) {
+			log.ErrorBadTypeParamCount(node.location, paramCountExpected, paramCountFound, type);
 		} else {
-			bool valid = true;
-			foreach (Expr expr in node.typeParams) {
-				if (!(expr.computedType is MetaType)) {
-					log.ErrorNotType(expr.location, expr.computedType);
-					valid = false;
-				}
-			}
-			if (valid) {
-				node.computedType = new MetaType {
-					instanceType = new ParamType {
-						type = node.type.computedType.InstanceType(),
-						typeParams = node.typeParams.ConvertAll(x => x.computedType.InstanceType())
-					}
-				};
-			}
+			node.computedType = new MetaType {
+				instanceType = new ListType { itemType = node.typeParams[0].computedType.InstanceType() }
+			};
 		}
 		
 		return null;
@@ -672,15 +742,17 @@ public class ComputeTypesPass : DefaultVisitor
 	
 	public override Null Visit(CastExpr node)
 	{
-		overloadContext = null;
+		context = null;
 		node.computedType = new ErrorType();
-		base.Visit(node);
+		node.target.Accept(this);
 		
 		// Check that the cast is valid
-		if (!(node.target.computedType is MetaType)) {
-			log.ErrorNotType(node.location, node.target.computedType);
+		if (!node.target.computedType.IsCompleteType()) {
+			log.ErrorNotCompleteType(node.location, node.target.computedType);
 		} else {
 			Type targetType = node.target.computedType.InstanceType();
+			context = new Context { targetType = targetType };
+			node.value.Accept(this);
 			if (!IsValidCast(node.value.computedType, targetType)) {
 				log.ErrorInvalidCast(node.value.location, node.value.computedType, targetType);
 			} else {
@@ -693,9 +765,9 @@ public class ComputeTypesPass : DefaultVisitor
 	
 	public override Null Visit(MemberExpr node)
 	{
-		List<Type> providedOverloadContext = overloadContext;
+		List<Type> argTypes = (context == null ? null : context.argTypes);
 		
-		overloadContext = null;
+		context = null;
 		node.computedType = new ErrorType();
 		base.Visit(node);
 		
@@ -720,13 +792,33 @@ public class ComputeTypesPass : DefaultVisitor
 		}
 		
 		// Perform overload resolution using information we were provided
-		ResolveOverloads(node, providedOverloadContext);
+		ResolveOverloads(node, argTypes);
+		
+		return null;
+	}
+	
+	public override Null Visit(IndexExpr node)
+	{
+		context = null;
+		node.computedType = new ErrorType();
+		base.Visit(node);
+		
+		if (!(node.obj.computedType is ListType)) {
+			log.ErrorTypeMismatch(node.location, new ListType(), node.obj.computedType);
+			return null;
+		}
+		if (!node.index.computedType.IsInt()) {
+			log.ErrorTypeMismatch(node.location, new PrimType { kind = PrimKind.Int }, node.index.computedType);
+			return null;
+		}
+		node.computedType = node.obj.computedType.ItemType();
 		
 		return null;
 	}
 	
 	public override Null Visit(ReturnStmt node)
 	{
+		context = new Context { targetType = returnType };
 		base.Visit(node);
 		if ((node.value == null) != (returnType is VoidType)) {
 			log.ErrorVoidReturn(node.location, returnType is VoidType);
@@ -751,16 +843,22 @@ public class ComputeTypesPass : DefaultVisitor
 	
 	public override Null Visit(VarDef node)
 	{
-		base.Visit(node);
-		if (!(node.type.computedType is MetaType)) {
-			log.ErrorNotType(node.type.location, node.type.computedType);
+		node.type.Accept(this);
+		if (!node.type.computedType.IsCompleteType()) {
+			log.ErrorNotCompleteType(node.type.location, node.type.computedType);
+		} else if (node.type.computedType.InstanceType() is VoidType) {
+			log.ErrorBadVariableType(node.location, node.type.computedType.InstanceType());
 		} else {
 			node.symbol.type = node.type.computedType.InstanceType();
-			if (node.value != null && !node.value.computedType.EqualsType(node.symbol.type)) {
-				if (node.value.computedType.CanImplicitlyConvertTo(node.symbol.type)) {
-					node.value = InsertCast(node.value, node.symbol.type);
-				} else {
-					log.ErrorTypeMismatch(node.location, node.symbol.type, node.value.computedType);
+			if (node.value != null) {
+				context = new Context { targetType = node.symbol.type };
+				node.value.Accept(this);
+				if (!node.value.computedType.EqualsType(node.symbol.type)) {
+					if (node.value.computedType.CanImplicitlyConvertTo(node.symbol.type)) {
+						node.value = InsertCast(node.value, node.symbol.type);
+					} else {
+						log.ErrorTypeMismatch(node.location, node.symbol.type, node.value.computedType);
+					}
 				}
 			}
 		}
@@ -785,10 +883,12 @@ public class ComputeTypesPass : DefaultVisitor
 		return null;
 	}
 	
-	private static bool IsParameterizableType(Type type)
+	private static int ExpectedTypeParamCount(Type type)
 	{
-		// No parameterizable types yet
-		return false;
+		if (type is ListType && type.ItemType() == null) {
+			return 1;
+		}
+		return 0;
 	}
 	
 	private void ResolveOverloads(Expr node, List<Type> argTypes)

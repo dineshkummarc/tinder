@@ -193,6 +193,11 @@ public class JsTargetVisitor : Visitor<string>
 		return "/* " + node.type + " */";
 	}
 	
+	public override string Visit(ListExpr node)
+	{
+		return "[" + node.items.ConvertAll(x => x.Accept(this).StripParens()).Join(", ") + "]";
+	}
+	
 	public override string Visit(UnaryExpr node)
 	{
 		return "(" + unaryOpToString[node.op] + node.value.Accept(this) + ")";
@@ -234,5 +239,10 @@ public class JsTargetVisitor : Visitor<string>
 	public override string Visit(MemberExpr node)
 	{
 		return node.obj.Accept(this) + "." + node.symbol.def.name;
+	}
+	
+	public override string Visit(IndexExpr node)
+	{
+		return node.obj.Accept(this) + "[" + node.index.Accept(this) + "]";
 	}
 }

@@ -226,6 +226,16 @@ public class TypeExpr : Expr
 	}
 }
 
+public class ListExpr : Expr
+{
+	public List<Expr> items;
+	
+	public override T Accept<T>(Visitor<T> visitor)
+	{
+		return visitor.Visit(this);
+	}
+}
+
 public enum UnaryOp
 {
 	Not,
@@ -324,6 +334,17 @@ public class MemberExpr : Expr
 	}
 }
 
+public class IndexExpr : Expr
+{
+	public Expr obj;
+	public Expr index;
+	
+	public override T Accept<T>(Visitor<T> visitor)
+	{
+		return visitor.Visit(this);
+	}
+}
+
 ////////////////////////////////////////////////////////////////////////////////
 // Visitor
 ////////////////////////////////////////////////////////////////////////////////
@@ -371,6 +392,8 @@ public abstract class Visitor<T>
 	
 	public abstract T Visit(TypeExpr node);
 	
+	public abstract T Visit(ListExpr node);
+	
 	public abstract T Visit(UnaryExpr node);
 	
 	public abstract T Visit(BinaryExpr node);
@@ -382,6 +405,8 @@ public abstract class Visitor<T>
 	public abstract T Visit(CastExpr node);
 	
 	public abstract T Visit(MemberExpr node);
+	
+	public abstract T Visit(IndexExpr node);
 }
 
 // We need a way of representing no return value and void can't be used as
@@ -515,6 +540,12 @@ public class DefaultVisitor : Visitor<Null>
 		return null;
 	}
 	
+	public override Null Visit(ListExpr node)
+	{
+		VisitAll(node.items);
+		return null;
+	}
+	
 	public override Null Visit(UnaryExpr node)
 	{
 		node.value.Accept(this);
@@ -552,6 +583,13 @@ public class DefaultVisitor : Visitor<Null>
 	public override Null Visit(MemberExpr node)
 	{
 		node.obj.Accept(this);
+		return null;
+	}
+	
+	public override Null Visit(IndexExpr node)
+	{
+		node.obj.Accept(this);
+		node.index.Accept(this);
 		return null;
 	}
 }

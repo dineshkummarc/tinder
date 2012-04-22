@@ -413,6 +413,17 @@ public class NodeToStringVisitor : Visitor<string>
 		return "TypeExpr { type = " + node.type + " }";
 	}
 	
+	public override string Visit(ListExpr node)
+	{
+		string text = "ListExpr {\n";
+		Indent();
+		foreach (Expr expr in node.items) {
+			text += indent + expr.Accept(this) + "\n";
+		}
+		Dedent();
+		return text + indent + "}";
+	}
+	
 	public override string Visit(UnaryExpr node)
 	{
 		Indent();
@@ -459,5 +470,13 @@ public class NodeToStringVisitor : Visitor<string>
 		string fields = Field("obj", node.obj) + Field("name", node.name);
 		Dedent();
 		return Wrap("MemberExpr", fields);
+	}
+	
+	public override string Visit(IndexExpr node)
+	{
+		Indent();
+		string fields = Field("obj", node.obj) + Field("index", node.index);
+		Dedent();
+		return Wrap("IndexExpr", fields);
 	}
 }
