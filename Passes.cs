@@ -137,6 +137,11 @@ public static class ErrorMessages
 		log.Error(location, "cannot resolve overloaded function without context");
 	}
 	
+	public static void ErrorMetaTypeExpr(this Log log, Location location)
+	{
+		log.Error(location, "free expression evaluates to type description");
+	}
+	
 	public static void WarningDeadCode(this Log log, Location location)
 	{
 		log.Warning(location, "dead code");
@@ -682,7 +687,6 @@ public class ComputeTypesPass : DefaultVisitor
 	
 	public override Null Visit(ReturnStmt node)
 	{
-		overloadContext = null;
 		base.Visit(node);
 		if ((node.value == null) != (returnType is VoidType)) {
 			log.ErrorVoidReturn(node.location, returnType is VoidType);
@@ -696,9 +700,17 @@ public class ComputeTypesPass : DefaultVisitor
 		return null;
 	}
 	
+	public override Null Visit(ExprStmt node)
+	{
+		base.Visit(node);
+		if (node.value.computedType is MetaType) {
+			log.ErrorMetaTypeExpr(node.location);
+		}
+		return null;
+	}
+	
 	public override Null Visit(VarDef node)
 	{
-		overloadContext = null;
 		base.Visit(node);
 		if (!(node.type.computedType is MetaType)) {
 			log.ErrorNotType(node.type.location, node.type.computedType);
@@ -717,7 +729,6 @@ public class ComputeTypesPass : DefaultVisitor
 	
 	public override Null Visit(FuncDef node)
 	{
-		overloadContext = null;
 		Type old = returnType;
 		returnType = ((FuncType)node.symbol.type).returnType;
 		base.Visit(node);
@@ -727,7 +738,6 @@ public class ComputeTypesPass : DefaultVisitor
 	
 	public override Null Visit(ClassDef node)
 	{
-		overloadContext = null;
 		ClassType old = thisType;
 		thisType = new ClassType { def = node };
 		base.Visit(node);
