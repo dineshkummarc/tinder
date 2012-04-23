@@ -169,6 +169,7 @@ public class Symbol
 	public bool isStatic; // Copied from def if present
 	public Def def; // Might be null for generated symbols
 	public Type type; // Might be null until after types are assigned to symbols
+	public string finalName; // Starts off as def.name but may be renamed (USE THIS ONE FOR OUTPUT)
 }
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -185,6 +186,7 @@ public enum ScopeKind
 
 public enum LookupKind
 {
+	Any,
 	Normal,
 	StaticMember,
 	InstanceMember,
@@ -207,6 +209,7 @@ public class Scope
 	public void Define(Symbol symbol)
 	{
 		Symbol existing;
+		symbol.finalName = symbol.def.name;
 		if (!map.TryGetValue(symbol.def.name, out existing)) {
 			// Insert a new symbol
 			map.Add(symbol.def.name, symbol);
@@ -222,7 +225,8 @@ public class Scope
 					kind = SymbolKind.OverloadedFunc,
 					isStatic = existing.isStatic,
 					def = null, // On purpose
-					type = new OverloadedFuncType { overloads = new List<Symbol> { existing, symbol } }
+					type = new OverloadedFuncType { overloads = new List<Symbol> { existing, symbol } },
+					finalName = symbol.def.name
 				};
 			} else {
 				((OverloadedFuncType)existing.type).overloads.Add(symbol);
@@ -237,6 +241,15 @@ public class Scope
 	{
 		Symbol symbol;
 		switch (lookupKind) {
+			case LookupKind.Any:
+				if (map.TryGetValue(name, out symbol)) {
+					return symbol;
+				}
+				if (parent != null) {
+					return parent.Lookup(name, LookupKind.Any);
+				}
+				break;
+			
 			case LookupKind.Normal:
 				if (kind != ScopeKind.Class && map.TryGetValue(name, out symbol)) {
 					return symbol;

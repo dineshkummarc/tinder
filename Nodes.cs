@@ -40,7 +40,6 @@ public class Module : Node
 
 public abstract class Stmt : Node
 {
-	public string comment;
 }
 
 public class IfStmt : Stmt

@@ -3,8 +3,110 @@ using System.Collections.Generic;
 
 public class JsTarget
 {
+	// From https://developer.mozilla.org/en/JavaScript/Reference/Reserved_Words
+	// and https://developer.mozilla.org/en/JavaScript/Reference/Global_Objects
+	private static readonly HashSet<string> reservedWords = new HashSet<string> {
+		// Reserved words
+		"break",
+		"case",
+		"catch",
+		"continue",
+		"debugger",
+		"default",
+		"delete",
+		"do",
+		"else",
+		"finally",
+		"for",
+		"function",
+		"if",
+		"in",
+		"instanceof",
+		"new",
+		"return",
+		"switch",
+		"this",
+		"throw",
+		"try",
+		"typeof",
+		"var",
+		"void",
+		"while",
+		"with",
+
+		// Words reserved for possible future use
+		"class",
+		"enum",
+		"export",
+		"extends",
+		"import",
+		"super",
+		"implements",
+		"interface",
+		"let",
+		"package",
+		"private",
+		"protected",
+		"public",
+		"static",
+		"yield",
+		"const",
+		
+		// Standard global objects
+		"Array",
+		"ArrayBuffer",
+		"Boolean",
+		"Date",
+		"decodeURI",
+		"decodeURIComponent",
+		"encodeURI",
+		"encodeURIComponent",
+		"Error",
+		"eval",
+		"EvalError",
+		"Float32Array",
+		"Float64Array",
+		"Function",
+		"Infinity",
+		"Int16Array",
+		"Int32Array",
+		"Int8Array",
+		"isFinite",
+		"isNaN",
+		"Iterator",
+		"JSON",
+		"Math",
+		"NaN",
+		"Number",
+		"Object",
+		"parseFloat",
+		"parseInt",
+		"RangeError",
+		"ReferenceError",
+		"RegExp",
+		"StopIteration",
+		"String",
+		"SyntaxError",
+		"TypeError",
+		"Uint16Array",
+		"Uint32Array",
+		"Uint8Array",
+		"Uint8ClampedArray",
+		"undefined",
+		"uneval",
+		"URIError",
+		
+		// Other
+		"constructor",
+		"prototype",
+		"null",
+		"true",
+		"false",
+	};
+
 	public static string Generate(Module module)
 	{
+		module.Accept(new RenameSymbolsPass(reservedWords, true));
 		return module.Accept(new JsTargetVisitor());
 	}
 }
@@ -15,6 +117,7 @@ public class JsTargetVisitor : Visitor<string>
 		{ UnaryOp.Negative, "-" },
 		{ UnaryOp.Not, "!" },
 	};
+	
 	private static readonly Dictionary<BinaryOp, string> binaryOpToString = new Dictionary<BinaryOp, string> {
 		{ BinaryOp.Assign, "=" },
 		
@@ -39,8 +142,9 @@ public class JsTargetVisitor : Visitor<string>
 		{ BinaryOp.LessThanEqual, "<=" },
 		{ BinaryOp.GreaterThanEqual, ">=" },
 	};
+	
 	// From https://developer.mozilla.org/en/JavaScript/Reference/Operators/Operator_Precedence
-	private static readonly Dictionary<BinaryOp, int> jsBinaryOpPrecedence = new Dictionary<BinaryOp, int> {
+	private static readonly Dictionary<BinaryOp, int> binaryOpPrecedence = new Dictionary<BinaryOp, int> {
 		{ BinaryOp.Multiply, 5 },
 		{ BinaryOp.Divide, 5 },
 		{ BinaryOp.Add, 6 },
@@ -60,6 +164,7 @@ public class JsTargetVisitor : Visitor<string>
 		{ BinaryOp.Or, 14 },
 		{ BinaryOp.Assign, 16 },
 	};
+		
 	private string indent = "";
 	private string prefix = "";
 	
@@ -118,7 +223,7 @@ public class JsTargetVisitor : Visitor<string>
 	
 	private string DefineVar(Def node)
 	{
-		return (prefix.Length > 0 ? prefix : "var ") + node.name;
+		return (prefix.Length > 0 ? prefix : "var ") + node.symbol.finalName;
 	}
 	
 	public override string Visit(VarDef node)
@@ -128,7 +233,7 @@ public class JsTargetVisitor : Visitor<string>
 
 	public override string Visit(FuncDef node)
 	{
-		return indent + DefineVar(node) + " = function(" + node.argDefs.ConvertAll(x => x.name).Join(", ") +
+		return indent + DefineVar(node) + " = function(" + node.argDefs.ConvertAll(x => x.symbol.finalName).Join(", ") +
 			") " + node.block.Accept(this) + ";\n";
 	}
 	
@@ -140,7 +245,8 @@ public class JsTargetVisitor : Visitor<string>
 		foreach (Stmt stmt in node.block.stmts) {
 			if (stmt is VarDef) {
 				VarDef varDef = (VarDef)stmt;
-				text += indent + "this." + varDef.name + " = " + (varDef.value == null ? "null" : varDef.value.Accept(this).StripParens()) + ";\n";
+				text += indent + "this." + varDef.symbol.finalName + " = " + (varDef.value == null ?
+					"null" : varDef.value.Accept(this).StripParens()) + ";\n";
 			}
 		}
 		Dedent();
@@ -151,7 +257,7 @@ public class JsTargetVisitor : Visitor<string>
 		foreach (Stmt stmt in node.block.stmts) {
 			if (!(stmt is VarDef)) {
 				bool isStatic = (!(stmt is FuncDef) || ((FuncDef)stmt).isStatic);
-				prefix = oldPrefix + node.name + (isStatic ? "." : ".prototype.");
+				prefix = oldPrefix + node.symbol.finalName + (isStatic ? "." : ".prototype.");
 				text += stmt.Accept(this);
 			}
 		}
@@ -196,7 +302,7 @@ public class JsTargetVisitor : Visitor<string>
 	
 	public override string Visit(IdentExpr node)
 	{
-		return node.symbol.def.name;
+		return node.symbol.finalName;
 	}
 	
 	public override string Visit(TypeExpr node)
@@ -217,9 +323,9 @@ public class JsTargetVisitor : Visitor<string>
 	private static int Precedence(BinaryExpr node)
 	{
 		if (node.op == BinaryOp.Divide && node.computedType.IsInt()) {
-			return jsBinaryOpPrecedence[BinaryOp.BitOr];
+			return binaryOpPrecedence[BinaryOp.BitOr];
 		}
-		return jsBinaryOpPrecedence[node.op];
+		return binaryOpPrecedence[node.op];
 	}
 	
 	public override string Visit(BinaryExpr node)
@@ -227,7 +333,7 @@ public class JsTargetVisitor : Visitor<string>
 		// Strip parentheses if they aren't needed
 		string left = node.left.Accept(this);
 		string right = node.right.Accept(this);
-		int precedence = jsBinaryOpPrecedence[node.op];
+		int precedence = binaryOpPrecedence[node.op];
 		if (node.left is BinaryExpr && precedence >= Precedence((BinaryExpr)node.left)) {
 			left = left.StripParens();
 		}
@@ -263,7 +369,7 @@ public class JsTargetVisitor : Visitor<string>
 	
 	public override string Visit(MemberExpr node)
 	{
-		return node.obj.Accept(this) + "." + node.symbol.def.name;
+		return node.obj.Accept(this) + "." + node.symbol.finalName;
 	}
 	
 	public override string Visit(IndexExpr node)

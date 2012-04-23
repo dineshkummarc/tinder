@@ -53,13 +53,13 @@ public static class Constants
 		{ TokenKind.And, 2, BinaryOp.And },
 		{ TokenKind.Or, 2, BinaryOp.Or },
 		
-		{ TokenKind.LessThan, 3, BinaryOp.LessThan },
-		{ TokenKind.GreaterThan, 3, BinaryOp.GreaterThan },
-		{ TokenKind.LessThanEqual, 3, BinaryOp.LessThanEqual },
-		{ TokenKind.GreaterThanEqual, 3, BinaryOp.GreaterThanEqual },
+		{ TokenKind.Equal, 3, BinaryOp.Equal },
+		{ TokenKind.NotEqual, 3, BinaryOp.NotEqual },
 		
-		{ TokenKind.Equal, 4, BinaryOp.Equal },
-		{ TokenKind.NotEqual, 4, BinaryOp.NotEqual },
+		{ TokenKind.LessThan, 4, BinaryOp.LessThan },
+		{ TokenKind.GreaterThan, 4, BinaryOp.GreaterThan },
+		{ TokenKind.LessThanEqual, 4, BinaryOp.LessThanEqual },
+		{ TokenKind.GreaterThanEqual, 4, BinaryOp.GreaterThanEqual },
 		
 		{ TokenKind.LShift, 5, BinaryOp.LShift },
 		{ TokenKind.RShift, 5, BinaryOp.RShift },
@@ -200,6 +200,14 @@ public static class Utility
 		foreach (KeyValuePair<K, V> pair in dict)
 			inverse[pair.Value] = pair.Key;
 		return inverse;
+	}
+	
+	public static List<KeyValuePair<K, V>> Items<K, V>(this Dictionary<K, V> dict)
+	{
+		List<KeyValuePair<K, V>> pairs = new List<KeyValuePair<K, V>>();
+		foreach (KeyValuePair<K, V> pair in dict)
+			pairs.Add(pair);
+		return pairs;
 	}
 	
 	public static UnaryOp AsUnaryOp(this TokenKind kind)

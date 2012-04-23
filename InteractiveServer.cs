@@ -9,6 +9,32 @@ public class InteractiveServer
 {
 	private const int port = 8080;
 	private const string htmlExample = htmlVector;
+	private const string htmlRename = @"
+class Object {
+  int _const
+  void const() {}
+  void const(int x) {}
+  void const(float x, bool y) {}
+  void const(Object x) {}
+  void const(list<string> x) {}
+  void const(list<list<string>> x) {}
+}
+
+void main() {
+  Object obj = Object()
+  obj.const()
+  obj.const(1)
+  obj.const(1, true)
+}
+
+class Visitor {
+  void visit(A node) {}
+  void visit(B node) {}
+}
+
+class A { void accept(Visitor visitor) { visitor.visit(this) } }
+class B { void accept(Visitor visitor) { visitor.visit(this) } }
+";
 	private const string htmlLinkList = @"
 external {
   void print(string text)
