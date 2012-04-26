@@ -189,6 +189,7 @@ public static class Parser
 		pratt.Get(TokenKind.LParen, Constants.operatorPrecedence[TokenKind.LParen]).infixParser = ParseCallExpr;
 		pratt.Get(TokenKind.LParam, Constants.operatorPrecedence[TokenKind.LParam]).infixParser = ParseParamExpr;
 		pratt.Get(TokenKind.LBracket, Constants.operatorPrecedence[TokenKind.LBracket]).infixParser = ParseIndexExpr;
+		pratt.Get(TokenKind.Nullable, Constants.operatorPrecedence[TokenKind.Nullable]).infixParser = ParseNullableExpr;
 	}
 	
 	private static IntExpr ParseIntExpr(ParserContext context)
@@ -390,7 +391,7 @@ public static class Parser
 		return node;
 	}
 	
-	private static Expr ParseIndexExpr(ParserContext context, Expr left)
+	private static IndexExpr ParseIndexExpr(ParserContext context, Expr left)
 	{
 		// Create the node
 		IndexExpr node = new IndexExpr {
@@ -403,6 +404,18 @@ public static class Parser
 		if ((node.index = pratt.Parse(context)) == null || !context.Consume(TokenKind.RBracket)) {
 			return null;
 		}
+		
+		return node;
+	}
+	
+	private static NullableExpr ParseNullableExpr(ParserContext context, Expr left)
+	{
+		// Create the node
+		NullableExpr node = new NullableExpr {
+			location = context.CurrentToken().location,
+			value = left
+		};
+		context.Next();
 		
 		return node;
 	}

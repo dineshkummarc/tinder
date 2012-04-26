@@ -374,4 +374,9 @@ public class JsTargetVisitor : Visitor<string>
 	{
 		return node.obj.Accept(this) + "[" + node.index.Accept(this) + "]";
 	}
+	
+	public override string Visit(NullableExpr node)
+	{
+		throw new NotImplementedException();
+	}
 }

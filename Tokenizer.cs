@@ -48,6 +48,7 @@ public enum TokenKind
 	GreaterThan,
 	LessThanEqual,
 	GreaterThanEqual,
+	Nullable,
 	
 	// Keywords
 	If,
@@ -128,6 +129,7 @@ public class Tokenizer
 		TokenKind.List,
 		TokenKind.Function,
 		TokenKind.RShift,
+		TokenKind.Nullable,
 	};
 	private static Dictionary<TokenKind, TokenKind> oppositeBracket = new Dictionary<TokenKind, TokenKind> {
 		{ TokenKind.RParen, TokenKind.LParen },

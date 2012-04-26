@@ -6,15 +6,20 @@ public class Log
 {
 	public List<string> warnings = new List<string>();
 	public List<string> errors = new List<string>();
+	public bool disabled;
 	
 	public void Warning(Location location, string text)
 	{
-		warnings.Add(Location.Where(location) + ": warning: " + text);
+		if (!disabled) {
+			warnings.Add(Location.Where(location) + ": warning: " + text);
+		}
 	}
 	
 	public void Error(Location location, string text)
 	{
-		errors.Add(Location.Where(location) + ": error: " + text);
+		if (!disabled) {
+			errors.Add(Location.Where(location) + ": error: " + text);
+		}
 	}
 }
 
@@ -87,6 +92,7 @@ public static class Constants
 		{ TokenKind.LParen, 10 },
 		{ TokenKind.LParam, 10 },
 		{ TokenKind.LBracket, 10 },
+		{ TokenKind.Nullable, 10 },
 	};
 	
 	// Map all symbols, operators, and keywords to the equivalent TokenKind
@@ -103,6 +109,7 @@ public static class Constants
 		{ ":", TokenKind.Colon },
 		{ "\\", TokenKind.Backslash },
 		
+		{ "=", TokenKind.Assign },
 		{ "+", TokenKind.Add },
 		{ "-", TokenKind.Subtract },
 		{ "*", TokenKind.Multiply },
@@ -118,7 +125,7 @@ public static class Constants
 		{ ">=", TokenKind.GreaterThanEqual },
 		{ "<", TokenKind.LessThan },
 		{ ">", TokenKind.GreaterThan },
-		{ "=", TokenKind.Assign },
+		{ "?", TokenKind.Nullable },
 		
 		{ "if", TokenKind.If },
 		{ "else", TokenKind.Else },

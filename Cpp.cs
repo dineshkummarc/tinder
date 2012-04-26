@@ -190,6 +190,9 @@ public class CppTargetVisitor : Visitor<string>
 			return TypeToString(funcType.returnType, "(*" + (name ?? "") + ")" + "(" +
 				funcType.argTypes.ConvertAll(x => TypeToString(x, null)).Join(", ") + ")");
 		}
+		if (type is NullableType) {
+			return TypeToString(((NullableType)type).type, name);
+		}
 		throw new NotImplementedException();
 	}
 	
@@ -392,5 +395,10 @@ public class CppTargetVisitor : Visitor<string>
 	public override string Visit(IndexExpr node)
 	{
 		return node.obj.Accept(this) + "[" + node.index.Accept(this) + "]";
+	}
+	
+	public override string Visit(NullableExpr node)
+	{
+		throw new NotImplementedException();
 	}
 }

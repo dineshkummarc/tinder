@@ -541,4 +541,12 @@ public class NodeToStringVisitor : Visitor<string>
 		Dedent();
 		return Wrap("IndexExpr", fields);
 	}
+	
+	public override string Visit(NullableExpr node)
+	{
+		Indent();
+		string fields = Field("value", node.value);
+		Dedent();
+		return Wrap("NullableExpr", fields);
+	}
 }

@@ -53,12 +53,12 @@ public static class ErrorMessages
 		log.Error(location, WrapType(type) + " is not a " + (type is MetaType ? "complete type" : "type"));
 	}
 	
-	public static void ErrorBadVariableType(this Log log, Location location, Type type)
+	public static void ErrorBadNullableType(this Log log, Location location, Type type)
 	{
 		if (type is ErrorType) {
 			return;
 		}
-		log.Error(location, "variables can not have type \"" + type + "\"");
+		log.Error(location, WrapType(type) + " cannot be nullable");
 	}
 	
 	public static void ErrorTypeMismatch(this Log log, Location location, Type expected, Type found)
@@ -548,7 +548,12 @@ public class ComputeTypesPass : DefaultVisitor
 	public override Null Visit(TypeExpr node)
 	{
 		context = null;
-		node.computedType = new MetaType { instanceType = node.type };
+		node.computedType = new ErrorType();
+//		if (node.type is VoidType) {
+//			log.Error(node.location, "invalid use of void");
+//		} else {
+			node.computedType = new MetaType { instanceType = node.type };
+//		}
 		return null;
 	}
 	
@@ -578,7 +583,7 @@ public class ComputeTypesPass : DefaultVisitor
 		}
 		return null;
 	}
-
+	
 	public override Null Visit(BoolExpr node)
 	{
 		context = null;
@@ -704,22 +709,41 @@ public class ComputeTypesPass : DefaultVisitor
 		context = null;
 		node.computedType = new ErrorType();
 		
-		// TODO: How to handle context?
-		// - For overloaded functions, we want to handle arguments first and use
-		//   them to provide context for overload resolution.
-		// - For normal functions, we want to handle the function first and use
-		//   its type to provide context for the arguments.
-		// The problem is that we can't know which one to visit before visiting
-		// them! Maybe make a Log.Disable() and Log.Enable() and then try visiting
-		// the function and see if its type is OverloadedFuncType?
-		
-		// Visit the arguments first to get context for resolving overloads
-		VisitAll(node.args);
-		List<Type> argTypes = node.args.ConvertAll(arg => arg.computedType);
-		
-		// Visit the function last and provide the overload resolving context
-		context = new Context { argTypes = argTypes };
+		// Context is tricky. For overloaded functions, we want to handle
+		// arguments first and use them to provide context for overload
+		// resolution. For normal functions, we want to handle the function
+		// first and use its type to provide context for the arguments.
+		// The problem is that we can't know which one to visit without visiting
+		// one of them first. To handle this, we temporarily disable logging and
+		// check if the function type is OverloadedFuncType or not.
+		log.disabled = true;
 		node.func.Accept(this);
+		log.disabled = false;
+		bool isOverload = node.func.computedType is OverloadedFuncType;
+		
+		if (isOverload) {
+			// Visit the arguments first to get context for resolving overloads
+			VisitAll(node.args);
+			
+			// Visit the function last and provide the overload resolving context
+			context = new Context { argTypes = node.args.ConvertAll(arg => arg.computedType) };
+			node.func.Accept(this);
+		} else {
+			// Visit the function again, this time with logging
+			node.func.Accept(this);
+			
+			// Visit the arguments and provide context with the argument type
+			FuncType funcType = node.func.computedType is FuncType ? (FuncType)node.func.computedType : null;
+			for (int i = 0; i < node.args.Count; i++) {
+				if (funcType != null && i < funcType.argTypes.Count) {
+					context = new Context { targetType = funcType.argTypes[i] };
+				}
+				node.args[i].Accept(this);
+			}
+		}
+		
+		// Cache information for checking
+		List<Type> argTypes = node.args.ConvertAll(arg => arg.computedType);
 		Type type = node.func.computedType;
 		
 		// Check for constructors
@@ -870,6 +894,26 @@ public class ComputeTypesPass : DefaultVisitor
 		return null;
 	}
 	
+	public override Null Visit(NullableExpr node)
+	{
+		context = null;
+		node.computedType = new ErrorType();
+		base.Visit(node);
+		
+		if (node.value.computedType is MetaType) {
+			Type type = node.value.computedType.InstanceType();
+			if (type is PrimType) {
+				log.ErrorBadNullableType(node.value.location, node.value.computedType);
+			} else {
+				node.computedType = new MetaType { instanceType = new NullableType { type = type } };
+			}
+		} else {
+			log.ErrorNotCompleteType(node.value.location, node.value.computedType);
+		}
+		
+		return null;
+	}
+	
 	public override Null Visit(ReturnStmt node)
 	{
 		context = new Context { targetType = returnType };
@@ -907,8 +951,6 @@ public class ComputeTypesPass : DefaultVisitor
 		node.type.Accept(this);
 		if (!node.type.computedType.IsCompleteType()) {
 			log.ErrorNotCompleteType(node.type.location, node.type.computedType);
-		} else if (node.type.computedType.InstanceType() is VoidType) {
-			log.ErrorBadVariableType(node.location, node.type.computedType.InstanceType());
 		} else {
 			node.symbol.type = node.type.computedType.InstanceType();
 			if (node.value != null) {

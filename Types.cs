@@ -153,6 +153,21 @@ public class ErrorType : Type
 	}
 }
 
+public class NullableType : Type
+{
+	public Type type;
+	
+	public override bool EqualsType(Type other)
+	{
+		return other is NullableType && type == ((NullableType)other).type;
+	}
+	
+	public override string ToString()
+	{
+		return type + "?";
+	}
+}
+
 ////////////////////////////////////////////////////////////////////////////////
 // Symbols
 ////////////////////////////////////////////////////////////////////////////////

@@ -358,6 +358,16 @@ public class IndexExpr : Expr
 	}
 }
 
+public class NullableExpr : Expr
+{
+	public Expr value;
+	
+	public override T Accept<T>(Visitor<T> visitor)
+	{
+		return visitor.Visit(this);
+	}
+}
+
 ////////////////////////////////////////////////////////////////////////////////
 // Visitor
 ////////////////////////////////////////////////////////////////////////////////
@@ -422,6 +432,8 @@ public abstract class Visitor<T>
 	public abstract T Visit(MemberExpr node);
 	
 	public abstract T Visit(IndexExpr node);
+	
+	public abstract T Visit(NullableExpr node);
 }
 
 // We need a way of representing no return value and void can't be used as
@@ -610,6 +622,12 @@ public class DefaultVisitor : Visitor<Null>
 	{
 		node.obj.Accept(this);
 		node.index.Accept(this);
+		return null;
+	}
+	
+	public override Null Visit(NullableExpr node)
+	{
+		node.value.Accept(this);
 		return null;
 	}
 }
