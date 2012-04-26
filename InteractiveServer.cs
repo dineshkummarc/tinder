@@ -8,7 +8,31 @@ using System.Collections.Generic;
 public class InteractiveServer
 {
 	private const int port = 8080;
-	private const string htmlExample = htmlVector;
+	private const string htmlExample = htmlMap;
+	private const string htmlMap = @"
+external {
+  int length(list<int> items)
+  void add(list<int> items, int item)
+}
+
+list<int> map(list<int> from, function<int, int> func) {
+  list<int> to = []
+  int i = 0
+  while i < length(from) {
+    add(to, func(from[i]))
+    i = i + 1
+  }
+  return to
+}
+
+int square(int x) {
+  return x * x
+}
+
+void main() {
+  list<int> result = map([1, 2, 3], square)
+}
+";
 	private const string htmlRename = @"
 class Object {
   int _const
@@ -67,8 +91,8 @@ void print(Link link) {
 }
 
 void main() {
-  Link list = cons(1, cons(2, cons(3, null)))
-  print(list)
+  Link nums = cons(1, cons(2, cons(3, null)))
+  print(nums)
 }
 ";
 	private const string htmlVector = @"
@@ -219,7 +243,8 @@ void main() {
 		XmlNode xmlResults = createChild(doc, null, "Results");
 		XmlNode xmlErrors = createChild(doc, xmlResults, "Errors");
 		XmlNode xmlWarnings = createChild(doc, xmlResults, "Warnings");
-		XmlNode xmlJs = createChild(doc, xmlResults, "JavaScript");
+		XmlNode xmlJs = createChild(doc, xmlResults, "Js");
+		XmlNode xmlCpp = createChild(doc, xmlResults, "Cpp");
 		XmlNode xmlTree = createChild(doc, xmlResults, "Tree");
 		XmlNode xmlTokens = createChild(doc, xmlResults, "Tokens");
 		List<Token> tokens = new List<Token>();
@@ -235,6 +260,12 @@ void main() {
 					appendText(doc, xmlTree, module.Accept(new NodeToStringVisitor()));
 					if (compiled) {
 						appendText(doc, xmlJs, JsTarget.Generate(module));
+						
+						// Recompile because cloning isn't implemented yet
+						Log temp = new Log();
+						module = Parser.Parse(temp, tokens, "<stdin>");
+						Compiler.Compile(temp, module);
+						appendText(doc, xmlCpp, CppTarget.Generate(module));
 					}
 				}
 			}

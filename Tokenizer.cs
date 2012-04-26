@@ -72,6 +72,7 @@ public enum TokenKind
 	Float,
 	String,
 	List,
+	Function,
 	
 	// Literals
 	IntLit,
@@ -125,6 +126,7 @@ public class Tokenizer
 		TokenKind.Float,
 		TokenKind.String,
 		TokenKind.List,
+		TokenKind.Function,
 		TokenKind.RShift,
 	};
 	private static Dictionary<TokenKind, TokenKind> oppositeBracket = new Dictionary<TokenKind, TokenKind> {

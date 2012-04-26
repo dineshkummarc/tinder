@@ -1,123 +1,115 @@
 using System;
 using System.Collections.Generic;
 
-public class JsTarget
+public static class CppTarget
 {
-	// From https://developer.mozilla.org/en/JavaScript/Reference/Reserved_Words
-	// and https://developer.mozilla.org/en/JavaScript/Reference/Global_Objects
+	// From http://en.cppreference.com/w/cpp/keyword
 	private static readonly HashSet<string> reservedWords = new HashSet<string> {
-		// Reserved words
+	// Keywords
+		"alignas",
+		"aliasof",
+		"and",
+		"and_eq",
+		"asm",
+		"auto",
+		"bitand",
+		"bitor",
+		"bool",
 		"break",
 		"case",
 		"catch",
+		"char",
+		"char16_t",
+		"char32_t",
+		"class",
+		"compl",
+		"const",
+		"constexpr",
+		"const_cast",
 		"continue",
-		"debugger",
+		"decltype",
 		"default",
 		"delete",
 		"do",
+		"double",
+		"dynamic_cast",
 		"else",
-		"finally",
-		"for",
-		"function",
-		"if",
-		"in",
-		"instanceof",
-		"new",
-		"return",
-		"switch",
-		"this",
-		"throw",
-		"try",
-		"typeof",
-		"var",
-		"void",
-		"while",
-		"with",
-
-		// Words reserved for possible future use
-		"class",
 		"enum",
+		"explicit",
 		"export",
-		"extends",
-		"import",
-		"super",
-		"implements",
-		"interface",
-		"let",
-		"package",
+		"extern",
+		"false",
+		"float",
+		"for",
+		"friend",
+		"goto",
+		"if",
+		"inline",
+		"int",
+		"long",
+		"mutable",
+		"namespace",
+		"new",
+		"noexcept",
+		"not",
+		"not_eq",
+		"nullptr",
+		"operator",
+		"or",
+		"or_eq",
 		"private",
 		"protected",
 		"public",
+		"register",
+		"reinterpret_cast",
+		"return",
+		"short",
+		"signed",
+		"sizeof",
 		"static",
-		"yield",
-		"const",
-		
-		// Standard global objects
-		"Array",
-		"ArrayBuffer",
-		"Boolean",
-		"Date",
-		"decodeURI",
-		"decodeURIComponent",
-		"encodeURI",
-		"encodeURIComponent",
-		"Error",
-		"eval",
-		"EvalError",
-		"Float32Array",
-		"Float64Array",
-		"Function",
-		"Infinity",
-		"Int16Array",
-		"Int32Array",
-		"Int8Array",
-		"isFinite",
-		"isNaN",
-		"Iterator",
-		"JSON",
-		"Math",
-		"NaN",
-		"Number",
-		"Object",
-		"parseFloat",
-		"parseInt",
-		"RangeError",
-		"ReferenceError",
-		"RegExp",
-		"StopIteration",
-		"String",
-		"SyntaxError",
-		"TypeError",
-		"Uint16Array",
-		"Uint32Array",
-		"Uint8Array",
-		"Uint8ClampedArray",
-		"undefined",
-		"uneval",
-		"URIError",
-		
-		// Other
-		"constructor",
-		"prototype",
-		"null",
+		"static_assert",
+		"static_cast",
+		"struct",
+		"switch",
+		"template",
+		"this",
+		"thread_local",
+		"throw",
 		"true",
-		"false",
+		"try",
+		"typedef",
+		"typeid",
+		"typename",
+		"union",
+		"unsigned",
+		"using",
+		"virtual",
+		"void",
+		"volatile",
+		"wchar_t",
+		"while",
+		"xor",
+		"xor_eq",
+		
+	// Other
+		"std",
+		"vector",
+		"string",
 	};
-
+	
 	public static string Generate(Module module)
 	{
-		module.Accept(new RenameSymbolsPass(reservedWords, true));
-		return module.Accept(new JsTargetVisitor());
+		module.Accept(new RenameSymbolsPass(reservedWords, false));
+		return module.Accept(new CppTargetVisitor());
 	}
 }
 
-public class JsTargetVisitor : Visitor<string>
+public class CppTargetVisitor : Visitor<string>
 {
 	private static readonly Dictionary<UnaryOp, string> unaryOpToString = new Dictionary<UnaryOp, string> {
 		{ UnaryOp.Negative, "-" },
 		{ UnaryOp.Not, "!" },
 	};
-	
 	private static readonly Dictionary<BinaryOp, string> binaryOpToString = new Dictionary<BinaryOp, string> {
 		{ BinaryOp.Assign, "=" },
 		
@@ -164,9 +156,7 @@ public class JsTargetVisitor : Visitor<string>
 		{ BinaryOp.Or, 14 },
 		{ BinaryOp.Assign, 16 },
 	};
-		
 	private string indent = "";
-	private string prefix = "";
 	
 	private void Indent()
 	{
@@ -178,21 +168,43 @@ public class JsTargetVisitor : Visitor<string>
 		indent = indent.Substring(2);
 	}
 	
+	private string TypeToString(Type type, string name)
+	{
+		if (type is ClassType) {
+			return ((ClassType)type).def.name + " *" + (name ?? "");
+		}
+		if (type is PrimType) {
+			if (((PrimType)type).kind == PrimKind.String) {
+				return "std::string" + (name != null ? " " + name : "");
+			}
+			return type.ToString() + (name != null ? " " + name : "");
+		}
+		if (type is ListType) {
+			return "std::vector<" + TypeToString(type.ItemType(), null) + "> *" + (name ?? "");
+		}
+		if (type is VoidType) {
+			return "void" + (name != null ? " " + name : "");
+		}
+		if (type is FuncType) {
+			FuncType funcType = (FuncType)type;
+			return TypeToString(funcType.returnType, "(*" + (name ?? "") + ")" + "(" +
+				funcType.argTypes.ConvertAll(x => TypeToString(x, null)).Join(", ") + ")");
+		}
+		throw new NotImplementedException();
+	}
+	
 	public override string Visit(Block node)
 	{
 		string text = "{\n";
 		Indent();
-		string oldPrefix = prefix;
-		prefix = "";
 		text += node.stmts.ConvertAll(x => x.Accept(this)).Join();
-		prefix = oldPrefix;
 		Dedent();
 		return text + indent + "}";
 	}
 
 	public override string Visit(Module node)
 	{
-		return "\"use strict\";\n" + node.block.stmts.ConvertAll(x => x.Accept(this)).Join();
+		return "#include <string>\n#include <vector>\n" + node.block.stmts.ConvertAll(x => x.Accept(this)).Join();
 	}
 
 	public override string Visit(IfStmt node)
@@ -213,7 +225,10 @@ public class JsTargetVisitor : Visitor<string>
 	
 	public override string Visit(ExternalStmt node)
 	{
-		return "";
+		string text = "";
+		foreach (Stmt stmt in node.block.stmts)
+			text += stmt.Accept(this);
+		return text;
 	}
 	
 	public override string Visit(WhileStmt node)
@@ -221,48 +236,50 @@ public class JsTargetVisitor : Visitor<string>
 		return indent + "while (" + node.test.Accept(this).StripParens() + ") " + node.block.Accept(this) + "\n";
 	}
 	
-	private string DefineVar(Def node)
-	{
-		return (prefix.Length > 0 ? prefix : "var ") + node.symbol.finalName;
-	}
-	
 	public override string Visit(VarDef node)
 	{
-		return indent + DefineVar(node) + (node.value == null ? "" : " = " + node.value.Accept(this).StripParens()) + ";\n";
+		string text = indent;
+		if (node.inExternal && !node.inClass) {
+			text += "extern ";
+		}
+		text += TypeToString(node.symbol.type, node.symbol.finalName);
+		if (node.value != null && node.inFunction) {
+			text += " = " + node.value.Accept(this).StripParens();
+		}
+		text += ";\n";
+		return text;
 	}
 
 	public override string Visit(FuncDef node)
 	{
-		return indent + DefineVar(node) + " = function(" + node.argDefs.ConvertAll(x => x.symbol.finalName).Join(", ") +
-			") " + node.block.Accept(this) + ";\n";
+		string text = indent + (node.isStatic ? "static " : "") + TypeToString(node.returnType.computedType.InstanceType(), node.symbol.finalName +
+			"(" + node.argDefs.ConvertAll(x => TypeToString(x.type.computedType.InstanceType(), x.symbol.finalName)).Join(", ") + ")");
+		if (node.block != null) {
+			text += " " + node.block.Accept(this) + "\n";
+		} else {
+			text += ";\n";
+		}
+		return text;
 	}
 	
 	public override string Visit(ClassDef node)
 	{
-		// Write out the class constructor
-		string text = indent + DefineVar(node) + " = function() {\n";
+		List<string> initializers = new List<string>();
+		string text = indent + "struct " + node.symbol.finalName + " {\n";
 		Indent();
 		foreach (Stmt stmt in node.block.stmts) {
+			text += stmt.Accept(this);
 			if (stmt is VarDef) {
 				VarDef varDef = (VarDef)stmt;
-				text += indent + "this." + varDef.symbol.finalName + " = " + (varDef.value == null ?
-					"null" : varDef.value.Accept(this).StripParens()) + ";\n";
+				initializers.Add(varDef.symbol.finalName + "(" + (varDef.value == null ? "" : varDef.value.Accept(this)) + ")");
 			}
+		}
+		if (initializers.Count > 0 && !node.inExternal) {
+			// Generate constructor
+			text += indent + node.symbol.finalName + "() : " + initializers.Join(", ") + " {}\n";
 		}
 		Dedent();
-		text += indent + "};\n";
-		
-		// Write out members
-		string oldPrefix = prefix;
-		foreach (Stmt stmt in node.block.stmts) {
-			if (!(stmt is VarDef)) {
-				bool isStatic = (!(stmt is FuncDef) || ((FuncDef)stmt).isStatic);
-				prefix = oldPrefix + node.symbol.finalName + (isStatic ? "." : ".prototype.");
-				text += stmt.Accept(this);
-			}
-		}
-		prefix = oldPrefix;
-		return text;
+		return text + indent + "};\n";
 	}
 	
 	public override string Visit(VarExpr node)
@@ -272,7 +289,7 @@ public class JsTargetVisitor : Visitor<string>
 	
 	public override string Visit(NullExpr node)
 	{
-		return "null";
+		return "NULL";
 	}
 
 	public override string Visit(ThisExpr node)
@@ -297,7 +314,7 @@ public class JsTargetVisitor : Visitor<string>
 
 	public override string Visit(StringExpr node)
 	{
-		return node.value.ToQuotedString();
+		return "std::string(" + node.value.ToQuotedString() + ")";
 	}
 	
 	public override string Visit(IdentExpr node)
@@ -312,20 +329,16 @@ public class JsTargetVisitor : Visitor<string>
 	
 	public override string Visit(ListExpr node)
 	{
-		return "[" + node.items.ConvertAll(x => x.Accept(this).StripParens()).Join(", ") + "]";
+		string text = "new std::vector<" + TypeToString(node.computedType.ItemType(), null) + ">()";
+		foreach (Expr item in node.items) {
+			text = "append(" + text + ", " + item.Accept(this).StripParens() + ")";
+		}
+		return text;
 	}
 	
 	public override string Visit(UnaryExpr node)
 	{
 		return "(" + unaryOpToString[node.op] + node.value.Accept(this) + ")";
-	}
-	
-	private static int Precedence(BinaryExpr node)
-	{
-		if (node.op == BinaryOp.Divide && node.computedType.IsInt()) {
-			return binaryOpPrecedence[BinaryOp.BitOr];
-		}
-		return binaryOpPrecedence[node.op];
 	}
 	
 	public override string Visit(BinaryExpr node)
@@ -334,18 +347,17 @@ public class JsTargetVisitor : Visitor<string>
 		string left = node.left.Accept(this);
 		string right = node.right.Accept(this);
 		int precedence = binaryOpPrecedence[node.op];
-		if (node.left is BinaryExpr && precedence >= Precedence((BinaryExpr)node.left)) {
+		if (node.left is BinaryExpr && precedence >= binaryOpPrecedence[((BinaryExpr)node.left).op]) {
 			left = left.StripParens();
 		}
-		if (node.right is BinaryExpr && precedence >= Precedence((BinaryExpr)node.right)) {
+		if (node.right is BinaryExpr && precedence >= binaryOpPrecedence[((BinaryExpr)node.right).op]) {
 			right = right.StripParens();
 		}
-		string text = left + " " + binaryOpToString[node.op] + " " + right;
-		if (node.op == BinaryOp.Divide && node.computedType.IsInt()) {
-			return "(" + text + " | 0)";
-		} else {
-			return "(" + text + ")";
+		if (node.op == BinaryOp.Add && node.left.computedType.IsString() && node.right is StringExpr) {
+			// Don't wrap string literals in std::string() if we don't need to
+			right = ((StringExpr)node.right).value.ToQuotedString();
 		}
+		return "(" + left + " " + binaryOpToString[node.op] + " " + right + ")";
 	}
 
 	public override string Visit(CallExpr node)
@@ -361,15 +373,20 @@ public class JsTargetVisitor : Visitor<string>
 	
 	public override string Visit(CastExpr node)
 	{
-		if (node.value.computedType.IsFloat() && node.target.computedType.InstanceType().IsInt()) {
-			return "(" + node.value.Accept(this) + " | 0)";
-		}
-		return node.value.Accept(this);
+		return "static_cast<" + TypeToString(node.target.computedType.InstanceType(), null) + ">(" + node.value.Accept(this).StripParens() + ")";
 	}
 	
 	public override string Visit(MemberExpr node)
 	{
-		return node.obj.Accept(this) + "." + node.symbol.finalName;
+		string separator;
+		if (node.obj.computedType is ClassType) {
+			separator = "->";
+		} else if (node.obj.computedType is MetaType) {
+			separator = "::";
+		} else {
+			separator = ".";
+		}
+		return node.obj.Accept(this) + separator + node.symbol.finalName;
 	}
 	
 	public override string Visit(IndexExpr node)

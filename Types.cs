@@ -68,12 +68,14 @@ public class FuncType : Type
 	
 	public override bool EqualsType(Type other)
 	{
-		return other is FuncType && returnType.EqualsType((FuncType)other) &&
-			argTypes.MatchesExactly(((FuncType)other).argTypes);
+		return other is FuncType && returnType.EqualsType(other.ReturnType()) && argTypes.MatchesExactly(other.ArgTypes());
 	}
 	
 	public override string ToString()
 	{
+		if (returnType == null) {
+			return "function";
+		}
 		List<Type> types = new List<Type> { returnType };
 		types.AddRange(argTypes);
 		return "function<" + types.Join() + ">";

@@ -267,6 +267,14 @@ public class StructuralCheckPass : DefaultVisitor
 	
 	public override Null Visit(Block node)
 	{
+		// Set the context flags for all statements
+		foreach (Stmt stmt in node.stmts) {
+			stmt.inClass = stack.Peek().inClass;
+			stmt.inExternal = stack.Peek().inExternal;
+			stmt.inFunction = stack.Peek().inFunction;
+		}
+		
+		// Provide errors for forbidden statements
 		if (stack.Peek().inClass) {
 			foreach (Stmt stmt in node.stmts) {
 				if (stmt is ClassDef || stmt is VarDef || stmt is FuncDef) {
@@ -296,6 +304,7 @@ public class StructuralCheckPass : DefaultVisitor
 				log.ErrorStmtNotAllowed(stmt.location, NameForStmt(stmt), "at module scope");
 			}
 		}
+		
 		base.Visit(node);
 		return null;
 	}
@@ -695,6 +704,15 @@ public class ComputeTypesPass : DefaultVisitor
 		context = null;
 		node.computedType = new ErrorType();
 		
+		// TODO: How to handle context?
+		// - For overloaded functions, we want to handle arguments first and use
+		//   them to provide context for overload resolution.
+		// - For normal functions, we want to handle the function first and use
+		//   its type to provide context for the arguments.
+		// The problem is that we can't know which one to visit before visiting
+		// them! Maybe make a Log.Disable() and Log.Enable() and then try visiting
+		// the function and see if its type is OverloadedFuncType?
+		
 		// Visit the arguments first to get context for resolving overloads
 		VisitAll(node.args);
 		List<Type> argTypes = node.args.ConvertAll(arg => arg.computedType);
@@ -712,7 +730,7 @@ public class ComputeTypesPass : DefaultVisitor
 		}
 		
 		// Call the function if there is one, inserting implicit casts as appropriate
-		if (type is FuncType && argTypes.MatchesWithImplicitConversions(((FuncType)type).argTypes)) {
+		if (type is FuncType && argTypes.MatchesWithImplicitConversions(type.ArgTypes())) {
 			FuncType funcType = (FuncType)type;
 			for (int i = 0; i < funcType.argTypes.Count; i++) {
 				if (!node.args[i].computedType.EqualsType(funcType.argTypes[i])) {
@@ -748,14 +766,29 @@ public class ComputeTypesPass : DefaultVisitor
 		}
 		Type type = node.type.computedType.InstanceType();
 		int paramCountFound = node.typeParams.Count;
-		int paramCountExpected = ExpectedTypeParamCount(type);
 		node.computedType = new ErrorType();
-		if (paramCountFound != paramCountExpected) {
-			log.ErrorBadTypeParamCount(node.location, paramCountExpected, paramCountFound, type);
+		if (type is ListType) {
+			int paramCountExpected = (type.ItemType() == null) ? 1 : 0;
+			if (paramCountFound != paramCountExpected) {
+				log.ErrorBadTypeParamCount(node.location, paramCountExpected, paramCountFound, type);
+			} else {
+				node.computedType = new MetaType {
+					instanceType = new ListType { itemType = node.typeParams[0].computedType.InstanceType() }
+				};
+			}
+		} else if (type is FuncType) {
+			if (type.ReturnType() != null) {
+				log.ErrorBadTypeParamCount(node.location, 0, paramCountFound, type);
+			} else {
+				node.computedType = new MetaType {
+					instanceType = new FuncType {
+						returnType = node.typeParams[0].computedType.InstanceType(),
+						argTypes = node.typeParams.GetRange(1, node.typeParams.Count - 1).ConvertAll(x => x.computedType.InstanceType())
+					}
+				};
+			}
 		} else {
-			node.computedType = new MetaType {
-				instanceType = new ListType { itemType = node.typeParams[0].computedType.InstanceType() }
-			};
+			log.ErrorBadTypeParamCount(node.location, 0, paramCountFound, type);
 		}
 		
 		return null;
@@ -897,7 +930,7 @@ public class ComputeTypesPass : DefaultVisitor
 	public override Null Visit(FuncDef node)
 	{
 		Type old = returnType;
-		returnType = ((FuncType)node.symbol.type).returnType;
+		returnType = node.symbol.type.ReturnType();
 		base.Visit(node);
 		returnType = old;
 		return null;
@@ -928,14 +961,6 @@ public class ComputeTypesPass : DefaultVisitor
 			log.ErrorTypeMismatch(node.test.location, new PrimType { kind = PrimKind.Bool }, node.test.computedType);
 		}
 		return null;
-	}
-	
-	private static int ExpectedTypeParamCount(Type type)
-	{
-		if (type is ListType && type.ItemType() == null) {
-			return 1;
-		}
-		return 0;
 	}
 	
 	private void ResolveOverloads(Expr node, List<Type> argTypes)
@@ -1142,7 +1167,7 @@ public class FlowValidationPass : DefaultVisitor
 		base.Visit(node);
 		
 		// Make sure all control paths return a value
-		if (!(((FuncType)node.symbol.type).returnType is VoidType) && !stack.Peek().didReturn) {
+		if (!(node.symbol.type.ReturnType() is VoidType) && !stack.Peek().didReturn) {
 			log.ErrorNotAllPathsReturnValue(node.location);
 		}
 		
@@ -1325,7 +1350,7 @@ public class RenameSymbolsPass : DefaultVisitor
 			if (symbol.kind == SymbolKind.OverloadedFunc) {
 				foreach (Symbol overload in ((OverloadedFuncType)symbol.type).overloads) {
 					if (renameOverloads) {
-						overload.finalName = Rename(MangleOverload(overload.def.name, ((FuncType)overload.type).argTypes), node.scope);
+						overload.finalName = Rename(MangleOverload(overload.def.name, overload.type.ArgTypes()), node.scope);
 						node.scope.map.Add(overload.finalName, overload);
 					} else {
 						overload.finalName = symbol.finalName;

@@ -167,6 +167,7 @@ public static class Parser
 		// Types
 		pratt.Literal(TokenKind.Void, (Token token) => new TypeExpr { location = token.location, type = new VoidType() });
 		pratt.Literal(TokenKind.List, (Token token) => new TypeExpr { location = token.location, type = new ListType() });
+		pratt.Literal(TokenKind.Function, (Token token) => new TypeExpr { location = token.location, type = new FuncType() });
 		pratt.Literal(TokenKind.Bool, ParsePrimType);
 		pratt.Literal(TokenKind.Int, ParsePrimType);
 		pratt.Literal(TokenKind.Float, ParsePrimType);

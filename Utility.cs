@@ -142,6 +142,7 @@ public static class Constants
 		{ "float", TokenKind.Float },
 		{ "string", TokenKind.String },
 		{ "list", TokenKind.List },
+		{ "function", TokenKind.Function },
 	};
 	
 	// Map tokens for primitive types to the equivalent PrimKind
@@ -232,7 +233,7 @@ public static class Utility
 	
 	public static bool CanImplicitlyConvertTo(this Type from, Type to)
 	{
-		return (from.IsInt() && to.IsFloat()) || (from is NullType && (to is ClassType || to is ListType));
+		return (from.IsInt() && to.IsFloat()) || (from is NullType && (to is ClassType || to is ListType || to is FuncType));
 	}
 	
 	public static bool MatchesExactly(this List<Type> a, List<Type> b)
@@ -293,7 +294,7 @@ public static class Utility
 	
 	public static bool HasFreeParams(this Type type)
 	{
-		return type is ListType && type.ItemType() == null;
+		return (type is ListType && type.ItemType() == null) || (type is FuncType && type.ReturnType() == null);
 	}
 	
 	public static bool IsCompleteType(this Type type)
@@ -309,6 +310,16 @@ public static class Utility
 	public static Type InstanceType(this Type type)
 	{
 		return ((MetaType)type).instanceType;
+	}
+	
+	public static Type ReturnType(this Type type)
+	{
+		return ((FuncType)type).returnType;
+	}
+	
+	public static List<Type> ArgTypes(this Type type)
+	{
+		return ((FuncType)type).argTypes;
 	}
 	
 	public static string StripParens(this string text)

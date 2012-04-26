@@ -40,6 +40,9 @@ public class Module : Node
 
 public abstract class Stmt : Node
 {
+	public bool inClass;
+	public bool inExternal;
+	public bool inFunction;
 }
 
 public class IfStmt : Stmt
