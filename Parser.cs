@@ -59,13 +59,13 @@ public class PrattParser
 	
 	// Create a literal operand that returns the result of applying func to the
 	// matched token.
-	public Symbol Literal(TokenKind kind, Func<Token, Expr> func)
+	public Symbol Literal(TokenKind kind, Func<ParserContext, Token, Expr> func)
 	{
 		Symbol symbol = Get(kind);
 		symbol.prefixParser = (ParserContext context) => {
 			Token token = context.CurrentToken();
 			context.Next();
-			return func(token);
+			return func(context, token);
 		};
 		return symbol;
 	}
@@ -73,14 +73,14 @@ public class PrattParser
 	// Create a binary infix operator with a certain binding power (precedence
 	// level) that returns the result of applying func to the left expression,
 	// the token, and the right expression.
-	public Symbol Infix(TokenKind kind, int bindingPower, Func<Expr, Token, Expr, Expr> func)
+	public Symbol Infix(TokenKind kind, int bindingPower, Func<ParserContext, Expr, Token, Expr, Expr> func)
 	{
 		Symbol symbol = Get(kind, bindingPower);
 		symbol.infixParser = (ParserContext context, Expr left) => {
 			Token token = context.CurrentToken();
 			context.Next();
 			Expr right = Parse(context, bindingPower);
-			return right != null ? func(left, token, right) : null;
+			return right != null ? func(context, left, token, right) : null;
 		};
 		return symbol;
 	}
@@ -88,14 +88,14 @@ public class PrattParser
 	// Create a binary infix operator with a certain binding power (precedence
 	// level) that returns the result of applying func to the left expression,
 	// the token, and the right expression.
-	public Symbol Prefix(TokenKind kind, int bindingPower, Func<Token, Expr, Expr> func)
+	public Symbol Prefix(TokenKind kind, int bindingPower, Func<ParserContext, Token, Expr, Expr> func)
 	{
 		Symbol symbol = Get(kind);
 		symbol.prefixParser = (ParserContext context) => {
 			Token token = context.CurrentToken();
 			context.Next();
 			Expr right = Parse(context, bindingPower);
-			return right != null ? func(token, right) : null;
+			return right != null ? func(context, token, right) : null;
 		};
 		return symbol;
 	}
@@ -105,10 +105,12 @@ public class ParserContext
 {
 	private int index;
 	private List<Token> tokens;
+	private Stack<NodeInfo> stack = new Stack<NodeInfo>();
 	
 	public ParserContext(List<Token> tokens)
 	{
 		this.tokens = tokens;
+		stack.Push(new NodeInfo());
 	}
 	
 	public Token CurrentToken()
@@ -119,6 +121,23 @@ public class ParserContext
 	public int CurrentIndex()
 	{
 		return index;
+	}
+	
+	public NodeInfo Info()
+	{
+		return stack.Peek();
+	}
+	
+	public NodeInfo PushInfo()
+	{
+		NodeInfo info = Info().Clone();
+		stack.Push(info);
+		return info;
+	}
+	
+	public void PopInfo()
+	{
+		stack.Pop();
 	}
 	
 	public bool Peek(TokenKind kind)
@@ -150,24 +169,31 @@ public static class Parser
 {
 	private static readonly PrattParser pratt = new PrattParser();
 	
+	private static T Wrap<T>(ParserContext context, Token token, T node) where T : Node
+	{
+		node.location = (token ?? context.CurrentToken()).location;
+		node.info = context.Info();
+		return node;
+	}
+	
 	static Parser()
 	{
 		// Literals
-		pratt.Literal(TokenKind.Var, (Token token) => new VarExpr { location = token.location });
-		pratt.Literal(TokenKind.Null, (Token token) => new NullExpr { location = token.location });
-		pratt.Literal(TokenKind.This, (Token token) => new ThisExpr { location = token.location });
-		pratt.Literal(TokenKind.True, (Token token) => new BoolExpr { location = token.location, value = true });
-		pratt.Literal(TokenKind.False, (Token token) => new BoolExpr { location = token.location, value = false });
-		pratt.Literal(TokenKind.StringLit, (Token token) => new StringExpr { location = token.location, value = token.text });
-		pratt.Literal(TokenKind.Identifier, (Token token) => new IdentExpr { location = token.location, name = token.text });
-		pratt.Literal(TokenKind.CharLit, (Token token) => new IntExpr { location = token.location, value = token.text[0] });
+		pratt.Literal(TokenKind.Var, (context, token) => Wrap(context, token, new VarExpr()));
+		pratt.Literal(TokenKind.Null, (context, token) => Wrap(context, token, new NullExpr()));
+		pratt.Literal(TokenKind.This, (context, token) => Wrap(context, token, new ThisExpr()));
+		pratt.Literal(TokenKind.True, (context, token) => Wrap(context, token, new BoolExpr { value = true }));
+		pratt.Literal(TokenKind.False, (context, token) => Wrap(context, token, new BoolExpr { value = false }));
+		pratt.Literal(TokenKind.StringLit, (context, token) => Wrap(context, token, new StringExpr { value = token.text }));
+		pratt.Literal(TokenKind.Identifier, (context, token) => Wrap(context, token, new IdentExpr { name = token.text }));
+		pratt.Literal(TokenKind.CharLit, (context, token) => Wrap(context, token, new IntExpr { value = token.text[0] }));
 		pratt.Get(TokenKind.IntLit).prefixParser = ParseIntExpr;
 		pratt.Get(TokenKind.FloatLit).prefixParser = ParseFloatExpr;
 		
 		// Types
-		pratt.Literal(TokenKind.Void, (Token token) => new TypeExpr { location = token.location, type = new VoidType() });
-		pratt.Literal(TokenKind.List, (Token token) => new TypeExpr { location = token.location, type = new ListType() });
-		pratt.Literal(TokenKind.Function, (Token token) => new TypeExpr { location = token.location, type = new FuncType() });
+		pratt.Literal(TokenKind.Void, (context, token) => Wrap(context, token, new TypeExpr { type = new VoidType() }));
+		pratt.Literal(TokenKind.List, (context, token) => Wrap(context, token, new TypeExpr { type = new ListType() }));
+		pratt.Literal(TokenKind.Function, (context, token) => Wrap(context, token, new TypeExpr { type = new FuncType() }));
 		pratt.Literal(TokenKind.Bool, ParsePrimType);
 		pratt.Literal(TokenKind.Int, ParsePrimType);
 		pratt.Literal(TokenKind.Float, ParsePrimType);
@@ -210,10 +236,7 @@ public static class Parser
 			return null;
 		}
 		context.Next();
-		return new IntExpr {
-			location = token.location,
-			value = value
-		};
+		return Wrap(context, token, new IntExpr { value = value });
 	}
 	
 	private static FloatExpr ParseFloatExpr(ParserContext context)
@@ -226,46 +249,37 @@ public static class Parser
 			return null;
 		}
 		context.Next();
-		return new FloatExpr {
-			location = token.location,
-			value = value
-		};
+		return Wrap(context, token, new FloatExpr { value = value });
 	}
 	
-	private static TypeExpr ParsePrimType(Token token)
+	private static TypeExpr ParsePrimType(ParserContext context, Token token)
 	{
-		return new TypeExpr {
-			location = token.location,
+		return Wrap(context, token, new TypeExpr {
 			type = new PrimType { kind = Constants.tokenToPrim[token.kind] }
-		};
+		});
 	}
 	
-	private static UnaryExpr ParsePrefixExpr(Token token, Expr value)
+	private static UnaryExpr ParsePrefixExpr(ParserContext context, Token token, Expr value)
 	{
-		return new UnaryExpr {
-			location = token.location,
+		return Wrap(context, token, new UnaryExpr {
 			op = token.kind.AsUnaryOp(),
 			value = value
-		};
+		});
 	}
 	
-	private static BinaryExpr ParseBinaryExpr(Expr left, Token token, Expr right)
+	private static BinaryExpr ParseBinaryExpr(ParserContext context, Expr left, Token token, Expr right)
 	{
-		return new BinaryExpr {
-			location = token.location,
+		return Wrap(context, token, new BinaryExpr {
 			left = left,
 			op = token.kind.AsBinaryOp(),
 			right = right
-		};
+		});
 	}
 	
 	private static CastExpr ParseCastExpr(ParserContext context, Expr left)
 	{
 		// Create the node
-		CastExpr node = new CastExpr {
-			location = context.CurrentToken().location,
-			value = left
-		};
+		CastExpr node = Wrap(context, null, new CastExpr { value = left });
 		context.Next();
 		
 		// Parse the target type
@@ -280,10 +294,7 @@ public static class Parser
 	private static MemberExpr ParseMemberExpr(ParserContext context, Expr left)
 	{
 		// Create the node
-		MemberExpr node = new MemberExpr {
-			location = context.CurrentToken().location,
-			obj = left
-		};
+		MemberExpr node = Wrap(context, null, new MemberExpr { obj = left });
 		context.Next();
 		
 		// Parse the member identifier
@@ -309,10 +320,7 @@ public static class Parser
 	private static ListExpr ParseListExpr(ParserContext context)
 	{
 		// Create the node
-		ListExpr node = new ListExpr {
-			location = context.CurrentToken().location,
-			items = new List<Expr>()
-		};
+		ListExpr node = Wrap(context, null, new ListExpr { items = new List<Expr>() });
 		context.Next();
 		
 		// Parse the item list
@@ -336,11 +344,7 @@ public static class Parser
 	private static CallExpr ParseCallExpr(ParserContext context, Expr left)
 	{
 		// Create the node
-		CallExpr node = new CallExpr {
-			location = context.CurrentToken().location,
-			func = left,
-			args = new List<Expr>()
-		};
+		CallExpr node = Wrap(context, null, new CallExpr { func = left, args = new List<Expr>() });
 		context.Next();
 		
 		// Parse the argument list
@@ -364,11 +368,7 @@ public static class Parser
 	private static ParamExpr ParseParamExpr(ParserContext context, Expr left)
 	{
 		// Create the node
-		ParamExpr node = new ParamExpr {
-			location = context.CurrentToken().location,
-			type = left,
-			typeParams = new List<Expr>()
-		};
+		ParamExpr node = Wrap(context, null, new ParamExpr { type = left, typeParams = new List<Expr>() });
 		context.Next();
 		
 		// Parse the type parameter list with at least one parameter
@@ -394,10 +394,7 @@ public static class Parser
 	private static IndexExpr ParseIndexExpr(ParserContext context, Expr left)
 	{
 		// Create the node
-		IndexExpr node = new IndexExpr {
-			location = context.CurrentToken().location,
-			obj = left
-		};
+		IndexExpr node = Wrap(context, null, new IndexExpr { obj = left });
 		context.Next();
 		
 		// Parse the index
@@ -411,10 +408,7 @@ public static class Parser
 	private static NullableExpr ParseNullableExpr(ParserContext context, Expr left)
 	{
 		// Create the node
-		NullableExpr node = new NullableExpr {
-			location = context.CurrentToken().location,
-			value = left
-		};
+		NullableExpr node = Wrap(context, null, new NullableExpr { value = left });
 		context.Next();
 		
 		return node;
@@ -449,64 +443,78 @@ public static class Parser
 		bool isStatic = context.Consume(TokenKind.Static);
 		
 		// If we don't know what it is yet, try an expression
-		Location location = context.CurrentToken().location;
+		Token token = context.CurrentToken();
+		context.PushInfo(); // Because we might set expr.info.isReturnType
 		Expr expr = pratt.Parse(context);
+		context.PopInfo();
 		if (expr == null) {
 			return null;
 		}
 		
 		// Check for end of statement (then it's a free expression)
 		if (ParseEndOfStatement(context)) {
-			return new ExprStmt {
-				location = location,
-				value = expr
-			};
+			return Wrap(context, token, new ExprStmt { value = expr });
 		}
-		location = context.CurrentToken().location;
+		token = context.CurrentToken();
 		
 		// Assume we have a definition (will start with a name)
-		string name = context.CurrentToken().text;
+		string name = token.text;
 		if (!context.Consume(TokenKind.Identifier)) {
 			return null;
 		}
 		
 		// Function definition
 		if (context.Consume(TokenKind.LParen)) {
-			FuncDef func = new FuncDef {
-				location = location,
+			FuncDef func = Wrap(context, token, new FuncDef {
 				name = name,
-				isStatic = isStatic,
 				returnType = expr,
 				argDefs = new List<VarDef>()
-			};
+			});
+			expr.info.isReturnType = true;
+			context.PushInfo().funcDef = func;
+			if (isStatic) {
+				context.Info().isStatic = true;
+			}
 			
 			// Parse arguments
 			bool first = true;
+			context.PushInfo().inFuncArgList = true;
 			while (!context.Consume(TokenKind.RParen)) {
 				if (first) {
 					first = false;
 				} else if (!context.Consume(TokenKind.Comma)) {
+					context.PopInfo();
+					context.PopInfo();
 					return null;
 				}
-				VarDef arg = new VarDef { location = context.CurrentToken().location };
+				VarDef arg = Wrap(context, null, new VarDef());
 				if ((arg.type = pratt.Parse(context)) == null) {
+					context.PopInfo();
+					context.PopInfo();
 					return null;
 				}
 				arg.name = context.CurrentToken().text;
 				if (!context.Consume(TokenKind.Identifier)) {
+					context.PopInfo();
+					context.PopInfo();
 					return null;
 				}
 				if (context.Consume(TokenKind.Assign) && (arg.value = pratt.Parse(context)) == null) {
+					context.PopInfo();
+					context.PopInfo();
 					return null;
 				}
 				func.argDefs.Add(arg);
 			}
+			context.PopInfo();
 			
 			// Parse the block
 			if (!ParseEndOfStatement(context) && ((func.block = ParseBlock(context)) == null || !ParseEndOfStatement(context))) {
+				context.PopInfo();
 				return null;
 			}
 			
+			context.PopInfo();
 			return func;
 		}
 		
@@ -516,11 +524,7 @@ public static class Parser
 		}
 		
 		// Variable definition and initialization
-		VarDef node = new VarDef {
-			location = location,
-			name = name,
-			type = expr
-		};
+		VarDef node = Wrap(context, token, new VarDef { name = name, type = expr });
 		if (context.Consume(TokenKind.Assign) && (node.value = pratt.Parse(context)) == null) {
 			return null;
 		}
@@ -529,11 +533,7 @@ public static class Parser
 		// separate VarDef statements (returning just the last one)
 		while (context.Consume(TokenKind.Comma)) {
 			block.stmts.Add(node);
-			node = new VarDef {
-				location = context.CurrentToken().location,
-				name = context.CurrentToken().text,
-				type = expr
-			};
+			node = Wrap(context, null, new VarDef { name = context.CurrentToken().text, type = expr });
 			if (!context.Consume(TokenKind.Identifier)) {
 				return null;
 			}
@@ -553,7 +553,7 @@ public static class Parser
 	private static IfStmt ParseIfStmt(ParserContext context)
 	{
 		// Create the node
-		IfStmt node = new IfStmt { location = context.CurrentToken().location };
+		IfStmt node = Wrap(context, null, new IfStmt());
 		context.Next();
 		
 		// Parse the if statement
@@ -572,10 +572,7 @@ public static class Parser
 				if (elseIf == null) {
 					return null;
 				}
-				node.elseBlock = new Block {
-					location = context.CurrentToken().location,
-					stmts = new List<Stmt> { elseIf }
-				};
+				node.elseBlock = Wrap(context, null, new Block { stmts = new List<Stmt> { elseIf } });
 				return node;
 			}
 			
@@ -597,7 +594,7 @@ public static class Parser
 	private static ReturnStmt ParseReturnStmt(ParserContext context)
 	{
 		// Create the node
-		ReturnStmt node = new ReturnStmt { location = context.CurrentToken().location };
+		ReturnStmt node = Wrap(context, null, new ReturnStmt());
 		context.Next();
 		
 		// First check for a void return
@@ -616,13 +613,16 @@ public static class Parser
 	private static ExternalStmt ParseExternalStmt(ParserContext context)
 	{
 		// Create the node
-		ExternalStmt node = new ExternalStmt { location = context.CurrentToken().location };
+		ExternalStmt node = Wrap(context, null, new ExternalStmt());
 		context.Next();
 		
 		// Parse the block
+		context.PushInfo().inExternal = true;
 		if ((node.block = ParseBlock(context)) == null) {
+			context.PopInfo();
 			return null;
 		}
+		context.PopInfo();
 		
 		// Check for end of statement
 		if (!ParseEndOfStatement(context)) {
@@ -635,7 +635,7 @@ public static class Parser
 	private static WhileStmt ParseWhileStmt(ParserContext context)
 	{
 		// Create the node
-		WhileStmt node = new WhileStmt { location = context.CurrentToken().location };
+		WhileStmt node = Wrap(context, null, new WhileStmt());
 		context.Next();
 		
 		// Parse the condition
@@ -659,7 +659,7 @@ public static class Parser
 	private static ClassDef ParseClassDef(ParserContext context)
 	{
 		// Create the node
-		ClassDef node = new ClassDef { location = context.CurrentToken().location };
+		ClassDef node = Wrap(context, null, new ClassDef());
 		context.Next();
 		
 		// Parse the name
@@ -668,10 +668,14 @@ public static class Parser
 			return null;
 		}
 		
+		
 		// Parse the block
+		context.PushInfo().classDef = node;
 		if ((node.block = ParseBlock(context)) == null) {
+			context.PopInfo();
 			return null;
 		}
+		context.PopInfo();
 		
 		// Check for end of statement
 		if (!ParseEndOfStatement(context)) {
@@ -684,9 +688,7 @@ public static class Parser
 	private static Block ParseBlock(ParserContext context)
 	{
 		// Create the node
-		Block node = new Block {
-			location = context.CurrentToken().location
-		};
+		Block node = Wrap(context, null, new Block());
 		
 		// Read the opening brace, swallowing up to one newline on either side
 		context.Consume(TokenKind.Newline);
@@ -711,15 +713,13 @@ public static class Parser
 	private static Module ParseModule(ParserContext context, string name)
 	{
 		// Create the node
-		Module node = new Module {
-			location = context.CurrentToken().location,
+		Module node = Wrap(context, null, new Module {
 			name = name,
-			block = new Block {
-				stmts = new List<Stmt>()
-			}
-		};
+			block = Wrap(context, null, new Block { stmts = new List<Stmt>() })
+		});
 		
 		// Keep reading statements until the end of the file
+		context.Info().module = node;
 		context.Consume(TokenKind.Newline);
 		while (!context.Consume(TokenKind.EndOfFile)) {
 			Stmt stmt = ParseStmt(context, node.block);

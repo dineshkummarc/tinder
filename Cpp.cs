@@ -242,11 +242,11 @@ public class CppTargetVisitor : Visitor<string>
 	public override string Visit(VarDef node)
 	{
 		string text = indent;
-		if (node.inExternal && !node.inClass) {
+		if (node.info.inExternal && node.info.classDef == null) {
 			text += "extern ";
 		}
 		text += TypeToString(node.symbol.type, node.symbol.finalName);
-		if (node.value != null && node.inFunction) {
+		if (node.value != null && node.info.funcDef != null) {
 			text += " = " + node.value.Accept(this).StripParens();
 		}
 		text += ";\n";
@@ -255,7 +255,7 @@ public class CppTargetVisitor : Visitor<string>
 
 	public override string Visit(FuncDef node)
 	{
-		string text = indent + (node.isStatic ? "static " : "") + TypeToString(node.returnType.computedType.InstanceType(), node.symbol.finalName +
+		string text = indent + (node.info.isStatic ? "static " : "") + TypeToString(node.returnType.computedType.InstanceType(), node.symbol.finalName +
 			"(" + node.argDefs.ConvertAll(x => TypeToString(x.type.computedType.InstanceType(), x.symbol.finalName)).Join(", ") + ")");
 		if (node.block != null) {
 			text += " " + node.block.Accept(this) + "\n";
@@ -277,7 +277,7 @@ public class CppTargetVisitor : Visitor<string>
 				initializers.Add(varDef.symbol.finalName + "(" + (varDef.value == null ? "" : varDef.value.Accept(this)) + ")");
 			}
 		}
-		if (initializers.Count > 0 && !node.inExternal) {
+		if (initializers.Count > 0 && !node.info.inExternal) {
 			// Generate constructor
 			text += indent + node.symbol.finalName + "() : " + initializers.Join(", ") + " {}\n";
 		}

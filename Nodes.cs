@@ -2,12 +2,42 @@ using System;
 using System.Collections.Generic;
 
 ////////////////////////////////////////////////////////////////////////////////
+// NodeInfo
+////////////////////////////////////////////////////////////////////////////////
+
+public class NodeInfo
+{
+	public Module module;
+	public ClassDef classDef;
+	public FuncDef funcDef;
+	public bool inFuncArgList;
+	public bool isReturnType;
+	public bool inExternal;
+	public bool isStatic;
+	public bool inCtor;
+	
+	public NodeInfo Clone() {
+		return new NodeInfo {
+			module = module,
+			classDef = classDef,
+			funcDef = funcDef,
+			inFuncArgList = inFuncArgList,
+			isReturnType = isReturnType,
+			inExternal = inExternal,
+			isStatic = isStatic,
+			inCtor = inCtor,
+		};
+	}
+}
+
+////////////////////////////////////////////////////////////////////////////////
 // Node
 ////////////////////////////////////////////////////////////////////////////////
 
 public abstract class Node
 {
 	public Location location;
+	public NodeInfo info;
 	
 	public abstract T Accept<T>(Visitor<T> visitor);
 }
@@ -40,9 +70,6 @@ public class Module : Node
 
 public abstract class Stmt : Node
 {
-	public bool inClass;
-	public bool inExternal;
-	public bool inFunction;
 }
 
 public class IfStmt : Stmt
@@ -121,7 +148,6 @@ public class VarDef : Def
 
 public class FuncDef : Def
 {
-	public bool isStatic;
 	public Expr returnType;
 	public List<VarDef> argDefs;
 	public Block block; // Might be null

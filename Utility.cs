@@ -240,7 +240,7 @@ public static class Utility
 	
 	public static bool CanImplicitlyConvertTo(this Type from, Type to)
 	{
-		return (from.IsInt() && to.IsFloat()) || (from is NullType && (to is ClassType || to is ListType || to is FuncType));
+		return (from.IsInt() && to.IsFloat()) || (from is NullType && to is NullableType);
 	}
 	
 	public static bool MatchesExactly(this List<Type> a, List<Type> b)

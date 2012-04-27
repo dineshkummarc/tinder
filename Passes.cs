@@ -45,12 +45,12 @@ public static class ErrorMessages
 		log.Error(location, "reference to undefined symbol \"" + name + "\"");
 	}
 	
-	public static void ErrorNotCompleteType(this Log log, Location location, Type type)
+	public static void ErrorNotUseableType(this Log log, Location location, Type type)
 	{
 		if (type is ErrorType) {
 			return;
 		}
-		log.Error(location, WrapType(type) + " is not a " + (type is MetaType ? "complete type" : "type"));
+		log.Error(location, WrapType(type) + " is not a " + (type is MetaType ? "useable type" : "type"));
 	}
 	
 	public static void ErrorBadNullableType(this Log log, Location location, Type type)
@@ -83,8 +83,12 @@ public static class ErrorMessages
 		if (node.left.computedType is ErrorType || node.right.computedType is ErrorType) {
 			return;
 		}
-		log.Error(node.location, "no match for operator " + node.op.AsString() + " that takes arguments \"(" +
-			node.left.computedType + ", " + node.right.computedType + ")\"");
+		if (node.op == BinaryOp.Assign) {
+			log.Error(node.location, "cannot assign " + WrapType(node.right.computedType) + " to " + WrapType(node.left.computedType));
+		} else {
+			log.Error(node.location, "no match for operator " + node.op.AsString() + " that takes arguments \"(" +
+				node.left.computedType + ", " + node.right.computedType + ")\"");
+		}
 	}
 	
 	public static void ErrorInvalidCast(this Log log, Location location, Type from, Type to)
@@ -178,9 +182,9 @@ public static class ErrorMessages
 		}
 	}
 	
-	public static void ErrorBadVar(this Log log, Location location)
+	public static void ErrorBadKeyword(this Log log, Location location, string keyword)
 	{
-		log.Error(location, "\"var\" is not allowed here");
+		log.Error(location, "\"" + keyword + "\" is not allowed here");
 	}
 	
 	public static void WarningDeadCode(this Log log, Location location)
@@ -195,38 +199,11 @@ public static class ErrorMessages
 
 public class StructuralCheckPass : DefaultVisitor
 {
-	private class State
-	{
-		public bool inClass;
-		public bool inExternal;
-		public bool inFunction;
-		
-		public State Reset()
-		{
-			// Don't clear inExternal because we always want to know that
-			inClass = false;
-			inFunction = false;
-			return this;
-		}
-		
-		public State Clone()
-		{
-			return new State {
-				inClass = inClass,
-				inExternal = inExternal,
-				inFunction = inFunction
-			};
-		}
-	}
-	
 	private Log log;
-	private Stack<State> stack;
 	
 	public StructuralCheckPass(Log log)
 	{
 		this.log = log;
-		stack = new Stack<State>();
-		stack.Push(new State());
 	}
 	
 	private string NameForStmt(Stmt stmt)
@@ -258,38 +235,24 @@ public class StructuralCheckPass : DefaultVisitor
 		return "statement";
 	}
 	
-	private State Push()
-	{
-		State state = stack.Peek().Clone();
-		stack.Push(state);
-		return state;
-	}
-	
 	public override Null Visit(Block node)
 	{
-		// Set the context flags for all statements
-		foreach (Stmt stmt in node.stmts) {
-			stmt.inClass = stack.Peek().inClass;
-			stmt.inExternal = stack.Peek().inExternal;
-			stmt.inFunction = stack.Peek().inFunction;
-		}
-		
 		// Provide errors for forbidden statements
-		if (stack.Peek().inClass) {
-			foreach (Stmt stmt in node.stmts) {
-				if (stmt is ClassDef || stmt is VarDef || stmt is FuncDef) {
-					continue;
-				}
-				log.ErrorStmtNotAllowed(stmt.location, NameForStmt(stmt), "inside a class definition");
-			}
-		} else if (stack.Peek().inFunction) {
+		if (node.info.funcDef != null) {
 			foreach (Stmt stmt in node.stmts) {
 				if (stmt is VarDef || stmt is ExprStmt || stmt is IfStmt || stmt is ReturnStmt || stmt is WhileStmt) {
 					continue;
 				}
 				log.ErrorStmtNotAllowed(stmt.location, NameForStmt(stmt), "inside a function body");
 			}
-		} else if (stack.Peek().inExternal) {
+		} else if (node.info.classDef != null) {
+			foreach (Stmt stmt in node.stmts) {
+				if (stmt is ClassDef || stmt is VarDef || stmt is FuncDef) {
+					continue;
+				}
+				log.ErrorStmtNotAllowed(stmt.location, NameForStmt(stmt), "inside a class definition");
+			}
+		} else if (node.info.inExternal) {
 			foreach (Stmt stmt in node.stmts) {
 				if (stmt is ClassDef || stmt is VarDef || stmt is FuncDef) {
 					continue;
@@ -309,21 +272,12 @@ public class StructuralCheckPass : DefaultVisitor
 		return null;
 	}
 	
-	public override Null Visit(ExternalStmt node)
-	{
-		// Nested external statements are disallowed in Visit(Block)
-		Push().inExternal = true;
-		base.Visit(node);
-		stack.Pop();
-		return null;
-	}
-	
 	public override Null Visit(VarDef node)
 	{
 		if (node.value != null) {
-			if (stack.Peek().inExternal) {
+			if (node.info.inExternal) {
 				log.ErrorStmtNotAllowed(node.location, "initialized variable", "inside an external block");
-			} else if (!stack.Peek().inClass && !stack.Peek().inFunction) {
+			} else if (node.info.classDef == null && node.info.funcDef == null) {
 				log.ErrorStmtNotAllowed(node.location, "initialized variable", "at module scope");
 			}
 		}
@@ -342,21 +296,11 @@ public class StructuralCheckPass : DefaultVisitor
 		}
 		
 		// Validate the presence of the function body
-		if (stack.Peek().inExternal != (node.block == null)) {
-			log.ErrorFunctionBody(node.location, stack.Peek().inExternal);
+		if (node.info.inExternal != (node.block == null)) {
+			log.ErrorFunctionBody(node.location, node.info.inExternal);
 		}
 		
-		Push().Reset().inFunction = true;
 		base.Visit(node);
-		stack.Pop();
-		return null;
-	}
-	
-	public override Null Visit(ClassDef node)
-	{
-		Push().Reset().inClass = true;
-		base.Visit(node);
-		stack.Pop();
 		return null;
 	}
 }
@@ -432,7 +376,7 @@ public class DefineSymbolsPass : DefaultVisitor
 		// Define the function
 		node.symbol = new Symbol {
 			kind = SymbolKind.Func,
-			isStatic = node.isStatic,
+			isStatic = node.info.isStatic,
 			def = node,
 			type = new ErrorType()
 		};
@@ -495,7 +439,7 @@ public class ComputeSymbolTypesPass : DefaultVisitor
 		if (node.computedType.IsCompleteType()) {
 			return node.computedType.InstanceType();
 		}
-		log.ErrorNotCompleteType(node.location, node.computedType);
+		log.ErrorNotUseableType(node.location, node.computedType);
 		return new ErrorType();
 	}
 	
@@ -536,8 +480,6 @@ public class ComputeTypesPass : DefaultVisitor
 	}
 	
 	private Log log;
-	private Type returnType;
-	private ClassType thisType;
 	public Context context;
 	
 	public ComputeTypesPass(Log log)
@@ -549,18 +491,18 @@ public class ComputeTypesPass : DefaultVisitor
 	{
 		context = null;
 		node.computedType = new ErrorType();
-//		if (node.type is VoidType) {
-//			log.Error(node.location, "invalid use of void");
-//		} else {
+		if (node.type is VoidType && !node.info.isReturnType) {
+			log.ErrorBadKeyword(node.location, "void");
+		} else {
 			node.computedType = new MetaType { instanceType = node.type };
-//		}
+		}
 		return null;
 	}
 	
 	public override Null Visit(VarExpr node)
 	{
 		context = null;
-		log.ErrorBadVar(node.location);
+		log.ErrorBadKeyword(node.location, "var");
 		node.computedType = new ErrorType();
 		return null;
 	}
@@ -576,8 +518,8 @@ public class ComputeTypesPass : DefaultVisitor
 	{
 		context = null;
 		node.computedType = new ErrorType();
-		if (thisType != null) {
-			node.computedType = thisType;
+		if (node.info.classDef != null && !node.info.isStatic) {
+			node.computedType = new ClassType { def = node.info.classDef };
 		} else {
 			log.ErrorThisOutsideClass(node.location);
 		}
@@ -778,14 +720,14 @@ public class ComputeTypesPass : DefaultVisitor
 		// Check type parameters first
 		foreach (Expr expr in node.typeParams) {
 			if (!expr.computedType.IsCompleteType()) {
-				log.ErrorNotCompleteType(expr.location, expr.computedType);
+				log.ErrorNotUseableType(expr.location, expr.computedType);
 				return null;
 			}
 		}
 		
 		// Check type next, using type parameters to validate
 		if (!(node.type.computedType is MetaType)) {
-			log.ErrorNotCompleteType(node.type.location, node.type.computedType);
+			log.ErrorNotUseableType(node.type.location, node.type.computedType);
 			return null;
 		}
 		Type type = node.type.computedType.InstanceType();
@@ -826,7 +768,7 @@ public class ComputeTypesPass : DefaultVisitor
 		
 		// Check that the cast is valid
 		if (!node.target.computedType.IsCompleteType()) {
-			log.ErrorNotCompleteType(node.location, node.target.computedType);
+			log.ErrorNotUseableType(node.location, node.target.computedType);
 		} else {
 			Type targetType = node.target.computedType.InstanceType();
 			context = new Context { targetType = targetType };
@@ -902,13 +844,13 @@ public class ComputeTypesPass : DefaultVisitor
 		
 		if (node.value.computedType is MetaType) {
 			Type type = node.value.computedType.InstanceType();
-			if (type is PrimType) {
+			if (type is PrimType || type is NullableType) {
 				log.ErrorBadNullableType(node.value.location, node.value.computedType);
 			} else {
 				node.computedType = new MetaType { instanceType = new NullableType { type = type } };
 			}
 		} else {
-			log.ErrorNotCompleteType(node.value.location, node.value.computedType);
+			log.ErrorNotUseableType(node.value.location, node.value.computedType);
 		}
 		
 		return null;
@@ -916,6 +858,7 @@ public class ComputeTypesPass : DefaultVisitor
 	
 	public override Null Visit(ReturnStmt node)
 	{
+		Type returnType = node.info.funcDef.symbol.type.ReturnType();
 		context = new Context { targetType = returnType };
 		base.Visit(node);
 		if ((node.value == null) != (returnType is VoidType)) {
@@ -944,13 +887,18 @@ public class ComputeTypesPass : DefaultVisitor
 		// Handle type inference separately
 		if (node.type is VarExpr && node.value != null) {
 			node.value.Accept(this);
-			node.symbol.type = node.value.computedType;
+			if (node.value.computedType is NullType || node.value.computedType is VoidType) {
+				log.ErrorNotUseableType(node.location, new MetaType { instanceType = node.value.computedType });
+				node.symbol.type = new ErrorType();
+			} else {
+				node.symbol.type = node.value.computedType;
+			}
 			return null;
 		}
 		
 		node.type.Accept(this);
 		if (!node.type.computedType.IsCompleteType()) {
-			log.ErrorNotCompleteType(node.type.location, node.type.computedType);
+			log.ErrorNotUseableType(node.type.location, node.type.computedType);
 		} else {
 			node.symbol.type = node.type.computedType.InstanceType();
 			if (node.value != null) {
@@ -966,24 +914,6 @@ public class ComputeTypesPass : DefaultVisitor
 				}
 			}
 		}
-		return null;
-	}
-	
-	public override Null Visit(FuncDef node)
-	{
-		Type old = returnType;
-		returnType = node.symbol.type.ReturnType();
-		base.Visit(node);
-		returnType = old;
-		return null;
-	}
-	
-	public override Null Visit(ClassDef node)
-	{
-		ClassType old = thisType;
-		thisType = new ClassType { def = node };
-		base.Visit(node);
-		thisType = old;
 		return null;
 	}
 	
@@ -1093,12 +1023,17 @@ public class ComputeTypesPass : DefaultVisitor
 		Type left = node.left.computedType;
 		Type right = node.right.computedType;
 		
+		// Binary operators aren't supported on type literals
+		if (left is MetaType || right is MetaType) {
+			return false;
+		}
+		
 		switch (node.op) {
 			case BinaryOp.Assign:
 				if (left.EqualsType(right)) {
 					node.computedType = new VoidType();
 					return true;
-				} else if (left.CanImplicitlyConvertTo(right)) {
+				} else if (right.CanImplicitlyConvertTo(left)) {
 					node.right = InsertCast(node.right, left);
 					node.computedType = new VoidType();
 					return true;
