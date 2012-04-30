@@ -48,6 +48,7 @@ public enum TokenKind
 	GreaterThan,
 	LessThanEqual,
 	GreaterThanEqual,
+	NullableDot,
 	Nullable,
 	
 	// Keywords

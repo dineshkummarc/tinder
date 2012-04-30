@@ -216,6 +216,7 @@ public static class Parser
 		pratt.Get(TokenKind.LParam, Constants.operatorPrecedence[TokenKind.LParam]).infixParser = ParseParamExpr;
 		pratt.Get(TokenKind.LBracket, Constants.operatorPrecedence[TokenKind.LBracket]).infixParser = ParseIndexExpr;
 		pratt.Get(TokenKind.Nullable, Constants.operatorPrecedence[TokenKind.Nullable]).infixParser = ParseNullableExpr;
+		pratt.Get(TokenKind.NullableDot, Constants.operatorPrecedence[TokenKind.NullableDot]).infixParser = ParseMemberExpr;
 	}
 	
 	private static IntExpr ParseIntExpr(ParserContext context)
@@ -294,7 +295,10 @@ public static class Parser
 	private static MemberExpr ParseMemberExpr(ParserContext context, Expr left)
 	{
 		// Create the node
-		MemberExpr node = Wrap(context, null, new MemberExpr { obj = left });
+		MemberExpr node = Wrap(context, null, new MemberExpr {
+			obj = left,
+			isSafeDereference = (context.CurrentToken().kind == TokenKind.NullableDot)
+		});
 		context.Next();
 		
 		// Parse the member identifier
@@ -444,15 +448,13 @@ public static class Parser
 		
 		// If we don't know what it is yet, try an expression
 		Token token = context.CurrentToken();
-		context.PushInfo(); // Because we might set expr.info.isReturnType
 		Expr expr = pratt.Parse(context);
-		context.PopInfo();
 		if (expr == null) {
 			return null;
 		}
 		
 		// Check for end of statement (then it's a free expression)
-		if (ParseEndOfStatement(context)) {
+		if (!isStatic && ParseEndOfStatement(context)) {
 			return Wrap(context, token, new ExprStmt { value = expr });
 		}
 		token = context.CurrentToken();
@@ -466,14 +468,14 @@ public static class Parser
 		// Function definition
 		if (context.Consume(TokenKind.LParen)) {
 			FuncDef func = Wrap(context, token, new FuncDef {
+				isStatic = isStatic,
 				name = name,
 				returnType = expr,
 				argDefs = new List<VarDef>()
 			});
-			expr.info.isReturnType = true;
 			context.PushInfo().funcDef = func;
 			if (isStatic) {
-				context.Info().isStatic = true;
+				context.Info().inStaticFunc = true;
 			}
 			
 			// Parse arguments

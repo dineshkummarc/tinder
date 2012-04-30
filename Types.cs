@@ -159,7 +159,7 @@ public class NullableType : Type
 	
 	public override bool EqualsType(Type other)
 	{
-		return other is NullableType && type == ((NullableType)other).type;
+		return other is NullableType && type.EqualsType(((NullableType)other).type);
 	}
 	
 	public override string ToString()

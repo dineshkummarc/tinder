@@ -254,7 +254,7 @@ public class JsTargetVisitor : Visitor<string>
 		string oldPrefix = prefix;
 		foreach (Stmt stmt in node.block.stmts) {
 			if (!(stmt is VarDef)) {
-				bool isStatic = (!(stmt is FuncDef) || stmt.info.isStatic);
+				bool isStatic = (!(stmt is FuncDef) || ((FuncDef)stmt).isStatic);
 				prefix = oldPrefix + node.symbol.finalName + (isStatic ? "." : ".prototype.");
 				text += stmt.Accept(this);
 			}

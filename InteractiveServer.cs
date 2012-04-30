@@ -8,7 +8,7 @@ using System.Collections.Generic;
 public class InteractiveServer
 {
 	private const int port = 8080;
-	private const string htmlExample = htmlMap;
+	private const string htmlExample = htmlLinkList;
 	private const string htmlMap = @"
 external {
   int length(list<int> items)
@@ -62,26 +62,26 @@ class B { void accept(Visitor visitor) { visitor.visit(this) } }
 	private const string htmlLinkList = @"
 external {
   void print(string text)
-  string str(int x)
+  string str(int? x)
 }
 
 class Link {
   int value
-  Link next
+  Link? next
 }
 
-Link cons(int value, Link next) {
+Link cons(int value, Link? next) {
   Link link = Link()
   link.value = value
   link.next = next
   return link
 }
 
-string printHelper(Link link) {
+string printHelper(Link? link) {
   if link != null {
-    string text = str(link.value)
-    if link.next != null { text = text + "", "" }
-    return text + printHelper(link.next)
+    string text = str(link?.value)
+    if link?.next != null { text = text + "", "" }
+    return text + printHelper(link?.next)
   }
   return """"
 }
@@ -416,8 +416,8 @@ public class NodeToStringVisitor : Visitor<string>
 	public override string Visit(FuncDef node)
 	{
 		Indent();
-		string fields = Field("name", node.name) + Field("returnType", node.returnType) +
-			Field("argDefs", node.argDefs) + Field("block", node.block);
+		string fields = Field("name", node.name) + Field("isStatic", node.isStatic ? "true" : "false") +
+			Field("returnType", node.returnType) + Field("argDefs", node.argDefs) + Field("block", node.block);
 		Dedent();
 		return Wrap("FuncDef", fields);
 	}
@@ -529,7 +529,7 @@ public class NodeToStringVisitor : Visitor<string>
 	public override string Visit(MemberExpr node)
 	{
 		Indent();
-		string fields = Field("obj", node.obj) + Field("name", node.name);
+		string fields = Field("obj", node.obj) + Field("name", node.name) + Field("isNullable", node.isSafeDereference ? "true" : "false");
 		Dedent();
 		return Wrap("MemberExpr", fields);
 	}

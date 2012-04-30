@@ -99,13 +99,20 @@ public static class ErrorMessages
 		log.Error(location, "cannot cast value of type \"" + from + "\" to \"" + to + "\"");
 	}
 	
+	public static void ErrorBadSaveDereference(this Log log, Location location, Type type)
+	{
+		if (type is ErrorType) {
+			return;
+		}
+		log.Error(location, "cannot apply safe dereference operator \"?.\" to " + WrapType(type));
+	}
+	
 	public static void ErrorBadMemberAccess(this Log log, MemberExpr node)
 	{
 		if (node.obj.computedType is ErrorType) {
 			return;
 		}
-		log.Error(node.location, "cannot access member \"" + node.name + "\" on value of type \"" +
-			node.obj.computedType + "\"");
+		log.Error(node.location, "cannot access member \"" + node.name + "\" on " + WrapType(node.obj.computedType));
 	}
 
 	public static void ErrorCallNotFound(this Log log, Location location, Type funcType, List<Type> argTypes)
@@ -124,9 +131,9 @@ public static class ErrorMessages
 		log.Error(location, "multiple ambiguous overloads that match arguments \"(" + argTypes.Join() + ")\"");
 	}
 	
-	public static void ErrorThisOutsideClass(this Log log, Location location)
+	public static void ErrorBadThis(this Log log, Location location)
 	{
-		log.Error(location, "\"this\" used outside class definition");
+		log.Error(location, "\"this\" used outside a member function");
 	}
 	
 	public static void ErrorVoidReturn(this Log log, Location location, bool shouldBeVoid)
@@ -376,7 +383,7 @@ public class DefineSymbolsPass : DefaultVisitor
 		// Define the function
 		node.symbol = new Symbol {
 			kind = SymbolKind.Func,
-			isStatic = node.info.isStatic,
+			isStatic = node.isStatic,
 			def = node,
 			type = new ErrorType()
 		};
@@ -432,8 +439,12 @@ public class ComputeSymbolTypesPass : DefaultVisitor
 		helper = new ComputeTypesPass(log);
 	}
 	
-	public Type GetInstanceType(Expr node)
+	public Type GetInstanceType(Expr node, bool isReturnType)
 	{
+		// Special-case void types for return types
+		if (isReturnType && node is TypeExpr && ((TypeExpr)node).type is VoidType) {
+			return ((TypeExpr)node).type;
+		}
 		helper.scope = scope;
 		node.Accept(helper);
 		if (node.computedType.IsCompleteType()) {
@@ -449,7 +460,7 @@ public class ComputeSymbolTypesPass : DefaultVisitor
 		if (functionCount > 0) {
 			node.symbol.type = new ErrorType();
 		} else {
-			node.symbol.type = GetInstanceType(node.type);
+			node.symbol.type = GetInstanceType(node.type, false);
 		}
 		return null;
 	}
@@ -460,8 +471,8 @@ public class ComputeSymbolTypesPass : DefaultVisitor
 		base.Visit(node);
 		functionCount--;
 		node.symbol.type = new FuncType {
-			returnType = GetInstanceType(node.returnType),
-			argTypes = node.argDefs.ConvertAll(arg => GetInstanceType(arg.type))
+			returnType = GetInstanceType(node.returnType, true),
+			argTypes = node.argDefs.ConvertAll(arg => GetInstanceType(arg.type, false))
 		};
 		return null;
 	}
@@ -491,7 +502,7 @@ public class ComputeTypesPass : DefaultVisitor
 	{
 		context = null;
 		node.computedType = new ErrorType();
-		if (node.type is VoidType && !node.info.isReturnType) {
+		if (node.type is VoidType) {
 			log.ErrorBadKeyword(node.location, "void");
 		} else {
 			node.computedType = new MetaType { instanceType = node.type };
@@ -518,10 +529,10 @@ public class ComputeTypesPass : DefaultVisitor
 	{
 		context = null;
 		node.computedType = new ErrorType();
-		if (node.info.classDef != null && !node.info.isStatic) {
+		if (node.info.classDef != null && node.info.funcDef != null && !node.info.inStaticFunc) {
 			node.computedType = new ClassType { def = node.info.classDef };
 		} else {
-			log.ErrorThisOutsideClass(node.location);
+			log.ErrorBadThis(node.location);
 		}
 		return null;
 	}
@@ -799,6 +810,16 @@ public class ComputeTypesPass : DefaultVisitor
 			kind = LookupKind.StaticMember;
 		}
 		
+		// Check for safe dereference
+		if (node.isSafeDereference) {
+			if (type is NullableType) {
+				type = ((NullableType)type).type;
+			} else {
+				log.ErrorBadSaveDereference(node.location, type);
+				return null;
+			}
+		}
+		
 		// Perform the symbol lookup
 		if (type is ClassType) {
 			node.symbol = ((ClassType)type).def.block.scope.Lookup(node.name, kind);
@@ -813,6 +834,11 @@ public class ComputeTypesPass : DefaultVisitor
 		
 		// Perform overload resolution using information we were provided
 		ResolveOverloads(node, argTypes);
+		
+		// For nullable safe dereference, the result could be null
+		if (node.isSafeDereference && !(node.computedType is ErrorType)) {
+			node.computedType = node.computedType.AsNullableType();
+		}
 		
 		return null;
 	}
@@ -844,10 +870,10 @@ public class ComputeTypesPass : DefaultVisitor
 		
 		if (node.value.computedType is MetaType) {
 			Type type = node.value.computedType.InstanceType();
-			if (type is PrimType || type is NullableType) {
+			if (type is NullableType) {
 				log.ErrorBadNullableType(node.value.location, node.value.computedType);
 			} else {
-				node.computedType = new MetaType { instanceType = new NullableType { type = type } };
+				node.computedType = new MetaType { instanceType = type.AsNullableType() };
 			}
 		} else {
 			log.ErrorNotUseableType(node.value.location, node.value.computedType);
@@ -913,6 +939,21 @@ public class ComputeTypesPass : DefaultVisitor
 					}
 				}
 			}
+		}
+		return null;
+	}
+	
+	public override Null Visit(FuncDef node)
+	{
+		// Special-case void types for return types
+		if (node.returnType is TypeExpr && ((TypeExpr)node.returnType).type is VoidType) {
+			node.returnType.computedType = new MetaType { instanceType = ((TypeExpr)node.returnType).type };
+		} else {
+			node.returnType.Accept(this);
+		}
+		VisitAll(node.argDefs);
+		if (node.block != null) {
+			node.block.Accept(this);
 		}
 		return null;
 	}

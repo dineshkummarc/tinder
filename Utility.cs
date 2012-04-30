@@ -93,6 +93,7 @@ public static class Constants
 		{ TokenKind.LParam, 10 },
 		{ TokenKind.LBracket, 10 },
 		{ TokenKind.Nullable, 10 },
+		{ TokenKind.NullableDot, 10 },
 	};
 	
 	// Map all symbols, operators, and keywords to the equivalent TokenKind
@@ -125,6 +126,7 @@ public static class Constants
 		{ ">=", TokenKind.GreaterThanEqual },
 		{ "<", TokenKind.LessThan },
 		{ ">", TokenKind.GreaterThan },
+		{ "?.", TokenKind.NullableDot },
 		{ "?", TokenKind.Nullable },
 		
 		{ "if", TokenKind.If },
@@ -240,7 +242,16 @@ public static class Utility
 	
 	public static bool CanImplicitlyConvertTo(this Type from, Type to)
 	{
-		return (from.IsInt() && to.IsFloat()) || (from is NullType && to is NullableType);
+		if (from.IsInt() && to.IsFloat()) {
+			return true;
+		}
+		if (to is NullableType) {
+			Type type = ((NullableType)to).type;
+			if (from is NullType || from.EqualsType(type) || from.CanImplicitlyConvertTo(type)) {
+				return true;
+			}
+		}
+		return false;
 	}
 	
 	public static bool MatchesExactly(this List<Type> a, List<Type> b)
@@ -327,6 +338,15 @@ public static class Utility
 	public static List<Type> ArgTypes(this Type type)
 	{
 		return ((FuncType)type).argTypes;
+	}
+	
+	public static NullableType AsNullableType(this Type type)
+	{
+		// Don't nest more than one level of nullable types
+		if (type is NullableType) {
+			return (NullableType)type;
+		}
+		return new NullableType { type = type };
 	}
 	
 	public static string StripParens(this string text)

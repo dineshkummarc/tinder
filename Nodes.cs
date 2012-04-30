@@ -11,9 +11,8 @@ public class NodeInfo
 	public ClassDef classDef;
 	public FuncDef funcDef;
 	public bool inFuncArgList;
-	public bool isReturnType;
 	public bool inExternal;
-	public bool isStatic;
+	public bool inStaticFunc;
 	public bool inCtor;
 	
 	public NodeInfo Clone() {
@@ -22,9 +21,8 @@ public class NodeInfo
 			classDef = classDef,
 			funcDef = funcDef,
 			inFuncArgList = inFuncArgList,
-			isReturnType = isReturnType,
 			inExternal = inExternal,
-			isStatic = isStatic,
+			inStaticFunc = inStaticFunc,
 			inCtor = inCtor,
 		};
 	}
@@ -148,6 +146,7 @@ public class VarDef : Def
 
 public class FuncDef : Def
 {
+	public bool isStatic;
 	public Expr returnType;
 	public List<VarDef> argDefs;
 	public Block block; // Might be null
@@ -365,6 +364,7 @@ public class MemberExpr : Expr
 {
 	public Expr obj;
 	public string name;
+	public bool isSafeDereference;
 	public Symbol symbol;
 	
 	public override T Accept<T>(Visitor<T> visitor)

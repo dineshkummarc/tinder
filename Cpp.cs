@@ -255,7 +255,7 @@ public class CppTargetVisitor : Visitor<string>
 
 	public override string Visit(FuncDef node)
 	{
-		string text = indent + (node.info.isStatic ? "static " : "") + TypeToString(node.returnType.computedType.InstanceType(), node.symbol.finalName +
+		string text = indent + (node.isStatic ? "static " : "") + TypeToString(node.returnType.computedType.InstanceType(), node.symbol.finalName +
 			"(" + node.argDefs.ConvertAll(x => TypeToString(x.type.computedType.InstanceType(), x.symbol.finalName)).Join(", ") + ")");
 		if (node.block != null) {
 			text += " " + node.block.Accept(this) + "\n";
