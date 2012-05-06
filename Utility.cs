@@ -55,45 +55,47 @@ public static class Constants
 	public static readonly OperatorList<BinaryOp> binaryOperators = new OperatorList<BinaryOp> {
 		{ TokenKind.Assign, 1, BinaryOp.Assign },
 		
-		{ TokenKind.And, 2, BinaryOp.And },
-		{ TokenKind.Or, 2, BinaryOp.Or },
+		{ TokenKind.NullableDefault, 2, BinaryOp.NullableDefault },
 		
-		{ TokenKind.Equal, 3, BinaryOp.Equal },
-		{ TokenKind.NotEqual, 3, BinaryOp.NotEqual },
+		{ TokenKind.And, 3, BinaryOp.And },
+		{ TokenKind.Or, 3, BinaryOp.Or },
 		
-		{ TokenKind.LessThan, 4, BinaryOp.LessThan },
-		{ TokenKind.GreaterThan, 4, BinaryOp.GreaterThan },
-		{ TokenKind.LessThanEqual, 4, BinaryOp.LessThanEqual },
-		{ TokenKind.GreaterThanEqual, 4, BinaryOp.GreaterThanEqual },
+		{ TokenKind.Equal, 4, BinaryOp.Equal },
+		{ TokenKind.NotEqual, 4, BinaryOp.NotEqual },
 		
-		{ TokenKind.LShift, 5, BinaryOp.LShift },
-		{ TokenKind.RShift, 5, BinaryOp.RShift },
-		{ TokenKind.BitAnd, 5, BinaryOp.BitAnd },
-		{ TokenKind.BitOr, 5, BinaryOp.BitOr },
-		{ TokenKind.BitXor, 5, BinaryOp.BitXor },
+		{ TokenKind.LessThan, 5, BinaryOp.LessThan },
+		{ TokenKind.GreaterThan, 5, BinaryOp.GreaterThan },
+		{ TokenKind.LessThanEqual, 5, BinaryOp.LessThanEqual },
+		{ TokenKind.GreaterThanEqual, 5, BinaryOp.GreaterThanEqual },
 		
-		{ TokenKind.Add, 6, BinaryOp.Add },
-		{ TokenKind.Subtract, 6, BinaryOp.Subtract },
+		{ TokenKind.LShift, 6, BinaryOp.LShift },
+		{ TokenKind.RShift, 6, BinaryOp.RShift },
+		{ TokenKind.BitAnd, 6, BinaryOp.BitAnd },
+		{ TokenKind.BitOr, 6, BinaryOp.BitOr },
+		{ TokenKind.BitXor, 6, BinaryOp.BitXor },
 		
-		{ TokenKind.Multiply, 7, BinaryOp.Multiply },
-		{ TokenKind.Divide, 7, BinaryOp.Divide },
+		{ TokenKind.Add, 7, BinaryOp.Add },
+		{ TokenKind.Subtract, 7, BinaryOp.Subtract },
+		
+		{ TokenKind.Multiply, 8, BinaryOp.Multiply },
+		{ TokenKind.Divide, 8, BinaryOp.Divide },
 	};
 	
 	// Table of unary operators mapping TokenKind <=> UnaryOp
 	public static readonly OperatorList<UnaryOp> unaryOperators = new OperatorList<UnaryOp> {
-		{ TokenKind.Subtract, 9, UnaryOp.Negative },
-		{ TokenKind.Not, 9, UnaryOp.Not },
+		{ TokenKind.Subtract, 10, UnaryOp.Negative },
+		{ TokenKind.Not, 10, UnaryOp.Not },
 	};
 	
 	// Operator precedence table for operators not in binaryOperators and unaryOperators
 	public static readonly Dictionary<TokenKind, int> operatorPrecedence = new Dictionary<TokenKind, int> {
-		{ TokenKind.As, 8 },
-		{ TokenKind.Dot, 10 },
-		{ TokenKind.LParen, 10 },
-		{ TokenKind.LParam, 10 },
-		{ TokenKind.LBracket, 10 },
-		{ TokenKind.Nullable, 10 },
-		{ TokenKind.NullableDot, 10 },
+		{ TokenKind.As, 9 },
+		{ TokenKind.Dot, 11 },
+		{ TokenKind.LParen, 11 },
+		{ TokenKind.LParam, 11 },
+		{ TokenKind.LBracket, 11 },
+		{ TokenKind.Nullable, 11 },
+		{ TokenKind.NullableDot, 11 },
 	};
 	
 	// Map all symbols, operators, and keywords to the equivalent TokenKind
@@ -127,6 +129,7 @@ public static class Constants
 		{ "<", TokenKind.LessThan },
 		{ ">", TokenKind.GreaterThan },
 		{ "?.", TokenKind.NullableDot },
+		{ "??", TokenKind.NullableDefault },
 		{ "?", TokenKind.Nullable },
 		
 		{ "if", TokenKind.If },

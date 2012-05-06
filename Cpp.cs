@@ -135,7 +135,7 @@ public class CppTargetVisitor : Visitor<string>
 		{ BinaryOp.GreaterThanEqual, ">=" },
 	};
 	
-	// From https://developer.mozilla.org/en/JavaScript/Reference/Operators/Operator_Precedence
+	// From http://en.cppreference.com/w/cpp/language/operator_precedence
 	private static readonly Dictionary<BinaryOp, int> binaryOpPrecedence = new Dictionary<BinaryOp, int> {
 		{ BinaryOp.Multiply, 5 },
 		{ BinaryOp.Divide, 5 },
@@ -191,7 +191,14 @@ public class CppTargetVisitor : Visitor<string>
 				funcType.argTypes.ConvertAll(x => TypeToString(x, null)).Join(", ") + ")");
 		}
 		if (type is NullableType) {
-			return TypeToString(((NullableType)type).type, name);
+			type = ((NullableType)type).type;
+			if (type is PrimType) {
+				if (((PrimType)type).kind == PrimKind.String) {
+					return "std::string" + " *" + (name ?? "");
+				}
+				return type.ToString() + " *" + (name ?? "");
+			}
+			return TypeToString(type, name);
 		}
 		throw new NotImplementedException();
 	}
@@ -349,6 +356,9 @@ public class CppTargetVisitor : Visitor<string>
 		// Strip parentheses if they aren't needed
 		string left = node.left.Accept(this);
 		string right = node.right.Accept(this);
+		if (node.op == BinaryOp.NullableDefault) {
+			return "TODO(" + left.StripParens() + ", " + right.StripParens() + ")";
+		}
 		int precedence = binaryOpPrecedence[node.op];
 		if (node.left is BinaryExpr && precedence >= binaryOpPrecedence[((BinaryExpr)node.left).op]) {
 			left = left.StripParens();
@@ -376,13 +386,21 @@ public class CppTargetVisitor : Visitor<string>
 	
 	public override string Visit(CastExpr node)
 	{
+		Type targetType = node.target.computedType.InstanceType();
+		if (targetType is NullableType) {
+			Type type = ((NullableType)targetType).type;
+			if (type is PrimType && node.value.computedType is PrimType) {
+				return "new " + TypeToString(type, null) + "(" + (node.value is StringExpr ? ((StringExpr)node.value).value.ToQuotedString() :
+					node.value.Accept(this).StripParens()) + ")";
+			}
+		}
 		return "static_cast<" + TypeToString(node.target.computedType.InstanceType(), null) + ">(" + node.value.Accept(this).StripParens() + ")";
 	}
 	
 	public override string Visit(MemberExpr node)
 	{
 		string separator;
-		if (node.obj.computedType is ClassType) {
+		if (node.obj.computedType is ClassType || node.obj.computedType is NullableType) {
 			separator = "->";
 		} else if (node.obj.computedType is MetaType) {
 			separator = "::";

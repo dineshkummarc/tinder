@@ -331,6 +331,9 @@ public class JsTargetVisitor : Visitor<string>
 		// Strip parentheses if they aren't needed
 		string left = node.left.Accept(this);
 		string right = node.right.Accept(this);
+		if (node.op == BinaryOp.NullableDefault) {
+			return "TODO(" + left.StripParens() + ", " + right.StripParens() + ")";
+		}
 		int precedence = binaryOpPrecedence[node.op];
 		if (node.left is BinaryExpr && precedence >= Precedence((BinaryExpr)node.left)) {
 			left = left.StripParens();

@@ -292,6 +292,8 @@ public enum BinaryOp
 {
 	Assign,
 	
+	NullableDefault,
+	
 	And,
 	Or,
 	

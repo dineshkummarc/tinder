@@ -58,7 +58,11 @@ public static class ErrorMessages
 		if (type is ErrorType) {
 			return;
 		}
-		log.Error(location, WrapType(type) + " cannot be nullable");
+		if (type is MetaType && type.InstanceType() is NullableType) {
+			log.Error(location, WrapType(type) + " is already nullable");
+		} else {
+			log.Error(location, WrapType(type) + " cannot be nullable");
+		}
 	}
 	
 	public static void ErrorTypeMismatch(this Log log, Location location, Type expected, Type found)
@@ -1078,6 +1082,20 @@ public class ComputeTypesPass : DefaultVisitor
 					node.right = InsertCast(node.right, left);
 					node.computedType = new VoidType();
 					return true;
+				}
+				break;
+				
+			case BinaryOp.NullableDefault:
+				if (left is NullableType) {
+					Type type = ((NullableType)left).type;
+					if (right.EqualsType(type)) {
+						node.computedType = type;
+						return true;
+					} else if (right.CanImplicitlyConvertTo(type)) {
+						node.right = InsertCast(node.right, type);
+						node.computedType = type;
+						return true;
+					}
 				}
 				break;
 		
