@@ -73,13 +73,13 @@ public class PrattParser
 	// Create a binary infix operator with a certain binding power (precedence
 	// level) that returns the result of applying func to the left expression,
 	// the token, and the right expression.
-	public Symbol Infix(TokenKind kind, int bindingPower, Func<ParserContext, Expr, Token, Expr, Expr> func)
+	public Symbol Infix(TokenKind kind, int bindingPower, Func<ParserContext, Expr, Token, Expr, Expr> func, bool rightAssociative)
 	{
 		Symbol symbol = Get(kind, bindingPower);
 		symbol.infixParser = (ParserContext context, Expr left) => {
 			Token token = context.CurrentToken();
 			context.Next();
-			Expr right = Parse(context, bindingPower);
+			Expr right = Parse(context, bindingPower - (rightAssociative ? 1 : 0));
 			return right != null ? func(context, left, token, right) : null;
 		};
 		return symbol;
@@ -201,7 +201,7 @@ public static class Parser
 		
 		// Infix operators
 		foreach (OperatorInfo<BinaryOp> info in Constants.binaryOperators)
-			pratt.Infix(info.kind, info.precedence, ParseBinaryExpr);
+			pratt.Infix(info.kind, info.precedence, ParseBinaryExpr, Constants.rightAssociativeOperators.Contains(info.kind));
 		
 		// Prefix operators
 		foreach (OperatorInfo<UnaryOp> info in Constants.unaryOperators)

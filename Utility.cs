@@ -51,51 +51,61 @@ public class OperatorList<T> : IEnumerable
 
 public static class Constants
 {
+	// Note: Operator precedence levels need spacing in between them so we can
+	// parse right-associative operators using a Pratt parser. While we only
+	// need the levels to be a multiple of 2 so we can add 1, making them a
+	// multiple of 10 brings them closer visually to their original values.
+	
 	// Table of binary operators mapping TokenKind <=> BinaryOp
 	public static readonly OperatorList<BinaryOp> binaryOperators = new OperatorList<BinaryOp> {
-		{ TokenKind.Assign, 1, BinaryOp.Assign },
+		{ TokenKind.Assign, 10, BinaryOp.Assign },
 		
-		{ TokenKind.NullableDefault, 2, BinaryOp.NullableDefault },
+		{ TokenKind.NullableDefault, 20, BinaryOp.NullableDefault },
 		
-		{ TokenKind.And, 3, BinaryOp.And },
-		{ TokenKind.Or, 3, BinaryOp.Or },
+		{ TokenKind.And, 30, BinaryOp.And },
+		{ TokenKind.Or, 30, BinaryOp.Or },
 		
-		{ TokenKind.Equal, 4, BinaryOp.Equal },
-		{ TokenKind.NotEqual, 4, BinaryOp.NotEqual },
+		{ TokenKind.Equal, 40, BinaryOp.Equal },
+		{ TokenKind.NotEqual, 40, BinaryOp.NotEqual },
 		
-		{ TokenKind.LessThan, 5, BinaryOp.LessThan },
-		{ TokenKind.GreaterThan, 5, BinaryOp.GreaterThan },
-		{ TokenKind.LessThanEqual, 5, BinaryOp.LessThanEqual },
-		{ TokenKind.GreaterThanEqual, 5, BinaryOp.GreaterThanEqual },
+		{ TokenKind.LessThan, 50, BinaryOp.LessThan },
+		{ TokenKind.GreaterThan, 50, BinaryOp.GreaterThan },
+		{ TokenKind.LessThanEqual, 50, BinaryOp.LessThanEqual },
+		{ TokenKind.GreaterThanEqual, 50, BinaryOp.GreaterThanEqual },
 		
-		{ TokenKind.LShift, 6, BinaryOp.LShift },
-		{ TokenKind.RShift, 6, BinaryOp.RShift },
-		{ TokenKind.BitAnd, 6, BinaryOp.BitAnd },
-		{ TokenKind.BitOr, 6, BinaryOp.BitOr },
-		{ TokenKind.BitXor, 6, BinaryOp.BitXor },
+		{ TokenKind.LShift, 60, BinaryOp.LShift },
+		{ TokenKind.RShift, 60, BinaryOp.RShift },
+		{ TokenKind.BitAnd, 60, BinaryOp.BitAnd },
+		{ TokenKind.BitOr, 60, BinaryOp.BitOr },
+		{ TokenKind.BitXor, 60, BinaryOp.BitXor },
 		
-		{ TokenKind.Add, 7, BinaryOp.Add },
-		{ TokenKind.Subtract, 7, BinaryOp.Subtract },
+		{ TokenKind.Add, 70, BinaryOp.Add },
+		{ TokenKind.Subtract, 70, BinaryOp.Subtract },
 		
-		{ TokenKind.Multiply, 8, BinaryOp.Multiply },
-		{ TokenKind.Divide, 8, BinaryOp.Divide },
+		{ TokenKind.Multiply, 80, BinaryOp.Multiply },
+		{ TokenKind.Divide, 80, BinaryOp.Divide },
+	};
+	
+	// Table of right-associative binary operators
+	public static readonly List<TokenKind> rightAssociativeOperators = new List<TokenKind>() {
+		TokenKind.Assign,
 	};
 	
 	// Table of unary operators mapping TokenKind <=> UnaryOp
 	public static readonly OperatorList<UnaryOp> unaryOperators = new OperatorList<UnaryOp> {
-		{ TokenKind.Subtract, 10, UnaryOp.Negative },
-		{ TokenKind.Not, 10, UnaryOp.Not },
+		{ TokenKind.Subtract, 100, UnaryOp.Negative },
+		{ TokenKind.Not, 100, UnaryOp.Not },
 	};
 	
 	// Operator precedence table for operators not in binaryOperators and unaryOperators
 	public static readonly Dictionary<TokenKind, int> operatorPrecedence = new Dictionary<TokenKind, int> {
-		{ TokenKind.As, 9 },
-		{ TokenKind.Dot, 11 },
-		{ TokenKind.LParen, 11 },
-		{ TokenKind.LParam, 11 },
-		{ TokenKind.LBracket, 11 },
-		{ TokenKind.Nullable, 11 },
-		{ TokenKind.NullableDot, 11 },
+		{ TokenKind.As, 90 },
+		{ TokenKind.Dot, 110 },
+		{ TokenKind.LParen, 110 },
+		{ TokenKind.LParam, 110 },
+		{ TokenKind.LBracket, 110 },
+		{ TokenKind.Nullable, 110 },
+		{ TokenKind.NullableDot, 110 },
 	};
 	
 	// Map all symbols, operators, and keywords to the equivalent TokenKind

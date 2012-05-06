@@ -1076,11 +1076,11 @@ public class ComputeTypesPass : DefaultVisitor
 		switch (node.op) {
 			case BinaryOp.Assign:
 				if (left.EqualsType(right)) {
-					node.computedType = new VoidType();
+					node.computedType = left;
 					return true;
 				} else if (right.CanImplicitlyConvertTo(left)) {
 					node.right = InsertCast(node.right, left);
-					node.computedType = new VoidType();
+					node.computedType = left;
 					return true;
 				}
 				break;
