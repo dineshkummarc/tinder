@@ -14,6 +14,12 @@ external {
   void use(int a)
 }
 
+int test0() {
+  int? a
+  // return a // error
+  return 0
+}
+
 void test1(int? a) {
   if a == null {
     // use(a) // error
@@ -58,6 +64,31 @@ int test6(int? a, int? b) {
   a = b
   if a != null { return a }
   if a == null { return 0 }
+}
+
+int test7(int? a) {
+  int? b
+  if a != null {
+    b = null
+  } else {
+    b = null
+  }
+  // return b // error
+  return 0
+}
+
+int test8(int? a) {
+  int? b
+  if a != null {
+    b = a
+  } else {
+    b = null
+  }
+  if a != null {
+    return b
+  } else {
+    return 0
+  }
 }
 ";
 	private const string htmlMap = @"

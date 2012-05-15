@@ -9,8 +9,8 @@ public static class Compiler
 			new DefineSymbolsPass(log),
 			new ComputeSymbolTypesPass(log),
 			new ComputeTypesPass(log),
-			new FlowValidationPass(log),
 			new DefaultInitializePass(),
+			new FlowValidationPass(log),
 		};
 		foreach (Visitor<Null> pass in passes) {
 			module.Accept(pass);

@@ -28,7 +28,11 @@ public class DefaultInitializePass : DefaultVisitor
 			} else if (type.IsString()) {
 				node.value = new StringExpr { value = "", computedType = type, location = node.location };
 			} else {
-				node.value = new NullExpr { computedType = type, location = node.location };
+				node.value = new CastExpr {
+					value = new NullExpr { computedType = new NullType(), location = node.location },
+					target = new TypeExpr { type = type, computedType = new MetaType { instanceType = type } },
+					computedType = type
+				};
 			}
 		}
 		return null;
