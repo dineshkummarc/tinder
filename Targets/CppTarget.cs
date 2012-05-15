@@ -406,14 +406,14 @@ public class CppTargetVisitor : Visitor<string>
 				isDereference = true;
 			}
 		}
+		value = (isDereference ? "*" + value : value.StripParens());
 
 		// Don't insert trivial casts
 		if (node.value.computedType is NullableType && node.computedType.EqualsType(((NullableType)node.value.computedType).type)) {
 			return value;
 		}
 
-		return "static_cast<" + TypeToString(node.target.computedType.InstanceType(), null) + ">(" +
-			(isDereference ? "*" + value : value.StripParens()) + ")";
+		return "static_cast<" + TypeToString(node.target.computedType.InstanceType(), null) + ">(" + value + ")";
 	}
 	
 	public override string Visit(MemberExpr node)
