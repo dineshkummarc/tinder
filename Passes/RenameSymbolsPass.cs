@@ -4,7 +4,7 @@ using System.Text.RegularExpressions;
 
 public class RenameSymbolsPass : DefaultVisitor
 {
-	private static readonly Regex splitter = new Regex("[<>,. ]+");
+	private static readonly Regex splitter = new Regex("[<>,.? ]+");
 	private HashSet<string> reservedWords;
 	private bool renameOverloads;
 	

@@ -8,7 +8,58 @@ using System.Collections.Generic;
 public class InteractiveServer
 {
 	private const int port = 8080;
-	private const string htmlExample = htmlLinkList;
+	private const string htmlExample = htmlNullable;
+	private const string htmlNullable = @"
+external {
+  void use(int a)
+}
+
+void test1(int? a) {
+  if a == null {
+    // use(a) // error
+  } else {
+    use(a)
+  }
+}
+
+void test2(int? a, int? b) {
+  if a == null or b == null {
+    // use(a) // warning
+    // use(b) // warning
+  } else {
+    use(a)
+    use(b)
+  }
+}
+
+void test3(int? a, int? b) {
+  if a != null or b != null {
+    // use(b) // warning
+    if a == null {
+      use(b)
+    }
+  }
+}
+
+int test4(int? a) {
+  if a != null { return a }
+  return 0 // error without this
+}
+
+int test5(int? a) {
+  if a != null { return a }
+  if a == null { return 0 }
+  // return 0 // warning
+}
+
+int test6(int? a, int? b) {
+  if a != null { return a }
+  // if a == null { return 0 } // warning
+  a = b
+  if a != null { return a }
+  if a == null { return 0 }
+}
+";
 	private const string htmlMap = @"
 external {
   int length(list<int> items)
@@ -62,7 +113,7 @@ class B { void accept(Visitor visitor) { visitor.visit(this) } }
 	private const string htmlLinkList = @"
 external {
   void print(string text)
-  string str(int? x)
+  string str(int x)
 }
 
 class Link {

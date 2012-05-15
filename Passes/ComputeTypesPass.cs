@@ -343,6 +343,9 @@ public class ComputeTypesPass : DefaultVisitor
 		// Nullable types automatically convert to their wrapped type
 		if (type is NullableType) {
 			type = ((NullableType)type).type;
+			if (!node.isSafeDereference) {
+				node.obj = InsertCast(node.obj, type);
+			}
 		} else if (node.isSafeDereference) {
 			log.ErrorBadSaveDereference(node.location, type);
 			return null;

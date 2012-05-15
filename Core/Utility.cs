@@ -233,6 +233,47 @@ public static class Utility
 		return pairs;
 	}
 	
+	public static void AddRange<K, V>(this Dictionary<K, V> dict, Dictionary<K, V> other)
+	{
+		foreach (KeyValuePair<K, V> pair in other) {
+			dict.Add(pair.Key, pair.Value);
+		}
+	}
+	
+	public static void AddRange<T>(this HashSet<T> hashSet, IEnumerable<T> other)
+	{
+		foreach (T t in other) {
+			hashSet.Add(t);
+		}
+	}
+	
+	public static V GetOrNull<K, V>(this Dictionary<K, V> dict, K key) where V : class
+	{
+		V value;
+		if (dict.TryGetValue(key, out value)) {
+			return value;
+		}
+		return null;
+	}
+	
+	public static V GetOrCreate<K, V>(this Dictionary<K, V> dict, K key) where V : new()
+	{
+		V value;
+		if (!dict.TryGetValue(key, out value)) {
+			value = dict[key] = new V();
+		}
+		return value;
+	}
+	
+	public static V GetOrDefault<K, V>(this Dictionary<K, V> dict, K key, V defaultValue)
+	{
+		V value;
+		if (dict.TryGetValue(key, out value)) {
+			return value;
+		}
+		return defaultValue;
+	}
+	
 	public static UnaryOp AsUnaryOp(this TokenKind kind)
 	{
 		return Constants.unaryOperators.tokenToEnum[kind];
@@ -376,5 +417,16 @@ public static class Utility
 	public static string Join(this List<string> list, string separator = "")
 	{
 		return string.Join(separator, list.ToArray());
+	}
+
+	public static string AsString(this IsNull isNull)
+	{
+		switch (isNull) {
+			case IsNull.No: return "not null";
+			case IsNull.Yes: return "null";
+			case IsNull.Maybe: return "maybe null";
+			case IsNull.Unknown: return "unknown";
+		}
+		return null;
 	}
 }
