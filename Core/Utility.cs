@@ -246,6 +246,15 @@ public static class Utility
 			hashSet.Add(t);
 		}
 	}
+
+	public static List<B> ConvertAll<A, B>(this HashSet<A> hashSet, Func<A, B> func)
+	{
+		List<B> result = new List<B>();
+		foreach (A a in hashSet) {
+			result.Add(func(a));
+		}
+		return result;
+	}
 	
 	public static V GetOrNull<K, V>(this Dictionary<K, V> dict, K key) where V : class
 	{

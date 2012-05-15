@@ -195,7 +195,7 @@ public static class ErrorMessages
 
 	public static void ErrorNullDereference(this Log log, Location location, string name)
 	{
-		log.Error(location, "dereference of null reference \"" + name + "\"");
+		log.Error(location, "dereference of definitely null value \"" + name + "\"");
 	}
 	
 	public static void WarningDeadCode(this Log log, Location location)
@@ -205,6 +205,6 @@ public static class ErrorMessages
 
 	public static void WarningNullableDereference(this Log log, Location location, string name)
 	{
-		log.Warning(location, "dereference of nullable reference \"" + name + "\"");
+		log.Warning(location, "dereference of possibly null value \"" + name + "\"");
 	}
 }

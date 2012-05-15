@@ -11,7 +11,6 @@ public class FlowValidationPass : DefaultVisitor
 {
 	private readonly Log log;
 	private readonly Dictionary<FlowNode, Knowledge> knowledgeCache = new Dictionary<FlowNode, Knowledge>();
-	private Dictionary<Symbol, List<SSANode>> ssaNodesForSymbol = new Dictionary<Symbol, List<SSANode>>();
 	private FlowNode rootNode;
 	private Pair currentPair;
 	private bool inFunc;
@@ -94,7 +93,6 @@ public class FlowValidationPass : DefaultVisitor
 
 		// Create a new SSA definition that is unique to this node
 		SSANode ssaNode = Record(new SSANode(node.symbol, nextID++, currentPair.trueNode));
-		ssaNodesForSymbol[node.symbol] = new List<SSANode> { ssaNode };
 		currentPair = new Pair(ssaNode);
 
 		// Update the knowledge based on the initial value, if any
@@ -166,19 +164,25 @@ public class FlowValidationPass : DefaultVisitor
 				return null;
 			}
 			if (identExpr.symbol.def.info.funcDef != null) {
-				// Split the flow into null and non-null paths
-				FlowNode isNullNode = currentPair.trueNode;
-				FlowNode isNotNullNode = currentPair.trueNode;
-				foreach (SSANode ssaNode in ssaNodesForSymbol[identExpr.symbol]) {
-					isNullNode = Record(new NullableNode(ssaNode, IsNull.Yes, isNullNode));
-					isNotNullNode = Record(new NullableNode(ssaNode, IsNull.No, isNotNullNode));
-				}
-
-				// Set up true and false branches
-				if (node.op == BinaryOp.Equal) {
-					currentPair = new Pair(isNullNode, isNotNullNode);
-				} else {
-					currentPair = new Pair(isNotNullNode, isNullNode);
+				Knowledge knowledge = KnowledgeForNode(currentPair.trueNode);
+				if (knowledge != null) {
+					// Split the flow into null and non-null paths
+					FlowNode isNullNode = currentPair.trueNode;
+					FlowNode isNotNullNode = currentPair.trueNode;
+					HashSet<SSANode> ssaNodes;
+					if (knowledge.ssaNodesForSymbol.TryGetValue(identExpr.symbol, out ssaNodes)) {
+						foreach (SSANode ssaNode in ssaNodes) {
+							isNullNode = Record(new NullableNode(ssaNode, IsNull.Yes, isNullNode));
+							isNotNullNode = Record(new NullableNode(ssaNode, IsNull.No, isNotNullNode));
+						}
+						
+						// Set up true and false branches
+						if (node.op == BinaryOp.Equal) {
+							currentPair = new Pair(isNullNode, isNotNullNode);
+						} else {
+							currentPair = new Pair(isNotNullNode, isNullNode);
+						}
+					}
 				}
 			}
 		} else if (node.op == BinaryOp.Assign) {
@@ -190,7 +194,6 @@ public class FlowValidationPass : DefaultVisitor
 				if (identExpr.symbol.def.info.funcDef != null) {
 					// Create a new SSA node for this assignment
 					SSANode ssaNode = Record(new SSANode(identExpr.symbol, nextID++, currentPair.trueNode));
-					ssaNodesForSymbol[identExpr.symbol] = new List<SSANode> { ssaNode };
 					currentPair = new Pair(ssaNode);
 
 					// Record narrowing information based on the new value
@@ -257,34 +260,48 @@ public class FlowValidationPass : DefaultVisitor
 		// Check for provably invalid dereferences
 		if (node.value is IdentExpr) {
 			IdentExpr identExpr = (IdentExpr)node.value;
-			List<SSANode> ssaNodes;
-			if (ssaNodesForSymbol.TryGetValue(identExpr.symbol, out ssaNodes)) {
-				// Find the union over all SSA nodes for this symbol
-				Knowledge knowledge = KnowledgeForNode(currentPair.trueNode);
-				IsNull union = IsNull.Unknown;
-				foreach (SSANode ssaNode in ssaNodes) {
-					if (ssaNode.symbol == identExpr.symbol) {
-						union |= knowledge.isNull.GetOrDefault(ssaNode, IsNull.Unknown);
-					}
-				}
-
-				// Take action based on knowledge
-				if (union == IsNull.Yes) {
-					log.ErrorNullDereference(node.location, identExpr.name);
-				} else if (union == IsNull.Maybe) {
-					log.WarningNullableDereference(node.location, identExpr.name);
-				}
+			IsNull isNull = IsNullForSymbol(identExpr.symbol);
+			if (isNull == IsNull.Yes) {
+				log.ErrorNullDereference(node.location, identExpr.name);
+			} else if (isNull == IsNull.Maybe) {
+				log.WarningNullableDereference(node.location, identExpr.name);
 			}
 		}
 
 		return null;
 	}
 
-	private static IsNull IsNullFromExpr(Expr node)
+	private IsNull IsNullForSymbol(Symbol symbol)
+	{
+		Knowledge knowledge = KnowledgeForNode(currentPair.trueNode);
+		if (knowledge != null) {
+			HashSet<SSANode> ssaNodes;
+			if (knowledge.ssaNodesForSymbol.TryGetValue(symbol, out ssaNodes)) {
+				// Find the union over all SSA nodes for this symbol
+				IsNull union = IsNull.Unknown;
+				foreach (SSANode ssaNode in ssaNodes) {
+					if (ssaNode.symbol == symbol) {
+						union |= knowledge.isNull.GetOrDefault(ssaNode, IsNull.Unknown);
+					}
+				}
+				return union;
+			}
+		}
+		return IsNull.Unknown;
+	}
+
+	private IsNull IsNullFromExpr(Expr node)
 	{
 		if (node is CastExpr) {
 			return IsNullFromExpr(((CastExpr)node).value);
 		} else {
+			if (node is IdentExpr) {
+				IdentExpr identExpr = (IdentExpr)node;
+				IsNull isNull = IsNullForSymbol(identExpr.symbol);
+				if (isNull != IsNull.Unknown) {
+					return isNull;
+				}
+			}
 			return IsNullFromType(node.computedType);
 		}
 	}
@@ -493,6 +510,16 @@ public class FlowValidationPass : DefaultVisitor
 		{
 			return symbol.def.name + id;
 		}
+
+		public override Knowledge AddTo(Knowledge knowledge)
+		{
+			// Add this definition to the knowledge, but don't overwrite SSA
+			// definitions closer to the start point
+			if (!knowledge.ssaNodesForSymbol.ContainsKey(symbol)) {
+				knowledge.ssaNodesForSymbol[symbol] = new HashSet<SSANode> { this };
+			}
+			return knowledge;
+		}
 	}
 
 	private class NullableNode : FlowNode
@@ -523,11 +550,14 @@ public class FlowValidationPass : DefaultVisitor
 	private class Knowledge
 	{
 		public readonly Dictionary<SSANode, IsNull> isNull = new Dictionary<SSANode, IsNull>();
+		public readonly Dictionary<Symbol, HashSet<SSANode>> ssaNodesForSymbol = new Dictionary<Symbol, HashSet<SSANode>>();
 
 		public static Knowledge Union(List<Knowledge> allKnowledge)
 		{
-			HashSet<SSANode> ssaNodes = new HashSet<SSANode>();
 			Knowledge result = new Knowledge();
+
+			// Take the union of all Knowledge.isNull maps
+			HashSet<SSANode> ssaNodes = new HashSet<SSANode>();
 			foreach (Knowledge knowledge in allKnowledge) {
 				ssaNodes.AddRange(knowledge.isNull.Keys);
 			}
@@ -538,14 +568,34 @@ public class FlowValidationPass : DefaultVisitor
 				}
 				result.isNull[ssaNode] = union;
 			}
+			
+			// Take the union of all Knowledge.ssaNodesForSymbol maps
+			HashSet<Symbol> symbols = new HashSet<Symbol>();
+			foreach (Knowledge knowledge in allKnowledge) {
+				symbols.AddRange(knowledge.ssaNodesForSymbol.Keys);
+			}
+			foreach (Symbol symbol in symbols) {
+				HashSet<SSANode> union = new HashSet<SSANode>();
+				foreach (Knowledge knowledge in allKnowledge) {
+					if (knowledge.ssaNodesForSymbol.ContainsKey(symbol)) {
+						union.UnionWith(knowledge.ssaNodesForSymbol[symbol]);
+					}
+				}
+				result.ssaNodesForSymbol[symbol] = union;
+			}
+
 			return result;
 		}
 
 		public override string ToString()
 		{
-			return string.Join(", ", isNull.Items().ConvertAll(pair => {
+			List<string> bits = ssaNodesForSymbol.Items().ConvertAll(pair => {
+				return pair.Key.def.name + " is " + string.Join(", ", pair.Value.ConvertAll(x => x.ToString()).ToArray());
+			});
+			bits.AddRange(isNull.Items().ConvertAll(pair => {
 				return pair.Key + " is " + pair.Value.AsString();
-			}).ToArray());
+			}));
+			return string.Join(", ", bits.ToArray());
 		}
 	}
 }
