@@ -340,14 +340,12 @@ public class ComputeTypesPass : DefaultVisitor
 			kind = LookupKind.StaticMember;
 		}
 		
-		// Check for safe dereference
-		if (node.isSafeDereference) {
-			if (type is NullableType) {
-				type = ((NullableType)type).type;
-			} else {
-				log.ErrorBadSaveDereference(node.location, type);
-				return null;
-			}
+		// Nullable types automatically convert to their wrapped type
+		if (type is NullableType) {
+			type = ((NullableType)type).type;
+		} else if (node.isSafeDereference) {
+			log.ErrorBadSaveDereference(node.location, type);
+			return null;
 		}
 		
 		// Perform the symbol lookup

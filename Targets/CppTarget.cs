@@ -387,6 +387,8 @@ public class CppTargetVisitor : Visitor<string>
 	public override string Visit(CastExpr node)
 	{
 		Type targetType = node.target.computedType.InstanceType();
+
+		// Primitive => nullable primitive is a new
 		if (targetType is NullableType) {
 			Type type = ((NullableType)targetType).type;
 			if (type is PrimType && node.value.computedType is PrimType) {
@@ -394,7 +396,19 @@ public class CppTargetVisitor : Visitor<string>
 					node.value.Accept(this).StripParens()) + ")";
 			}
 		}
-		return "static_cast<" + TypeToString(node.target.computedType.InstanceType(), null) + ">(" + node.value.Accept(this).StripParens() + ")";
+
+		// Nullable primitive => primitive is a dereference
+		bool isDereference = false;
+		if (node.value.computedType is NullableType) {
+			Type type = ((NullableType)node.value.computedType).type;
+			if (type is PrimType && targetType is PrimType) {
+				isDereference = true;
+			}
+		}
+
+		string value = node.value.Accept(this);
+		return "static_cast<" + TypeToString(node.target.computedType.InstanceType(), null) + ">(" +
+			(isDereference ? "*" + value : value.StripParens()) + ")";
 	}
 	
 	public override string Visit(MemberExpr node)

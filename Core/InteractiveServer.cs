@@ -79,9 +79,9 @@ Link cons(int value, Link? next) {
 
 string printHelper(Link? link) {
   if link != null {
-    string text = str(link?.value)
-    if link?.next != null { text = text + "", "" }
-    return text + printHelper(link?.next)
+    string text = str(link.value)
+    if link.next != null { text = text + "", "" }
+    return text + printHelper(link.next)
   }
   return """"
 }

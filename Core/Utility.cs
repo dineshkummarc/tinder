@@ -258,6 +258,12 @@ public static class Utility
 		if (from.IsInt() && to.IsFloat()) {
 			return true;
 		}
+		if (from is NullableType) {
+			Type type = ((NullableType)from).type;
+			if (to.EqualsType(type) || to.CanImplicitlyConvertTo(type)) {
+				return true;
+			}
+		}
 		if (to is NullableType) {
 			Type type = ((NullableType)to).type;
 			if (from is NullType || from.EqualsType(type) || from.CanImplicitlyConvertTo(type)) {

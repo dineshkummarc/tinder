@@ -45,8 +45,6 @@
     <Compile Include="Passes\FlowValidationPass.cs" />
     <Compile Include="Passes\DefaultInitializePass.cs" />
     <Compile Include="Passes\RenameSymbolsPass.cs" />
-    <Compile Include="Targets\Cpp.cs" />
-    <Compile Include="Targets\Js.cs" />
     <Compile Include="Core\InteractiveServer.cs" />
     <Compile Include="Core\Nodes.cs" />
     <Compile Include="Core\Parser.cs" />
@@ -55,6 +53,8 @@
     <Compile Include="Core\Utility.cs" />
     <Compile Include="Core\ErrorMessages.cs" />
     <Compile Include="Core\Compiler.cs" />
+    <Compile Include="Targets\CppTarget.cs" />
+    <Compile Include="Targets\JsTarget.cs" />
   </ItemGroup>
   <ItemGroup>
     <Folder Include="Passes\" />
