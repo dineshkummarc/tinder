@@ -122,7 +122,6 @@ public static class Constants
 		{ ":", TokenKind.Colon },
 		{ "\\", TokenKind.Backslash },
 		
-		{ "=", TokenKind.Assign },
 		{ "+", TokenKind.Add },
 		{ "-", TokenKind.Subtract },
 		{ "*", TokenKind.Multiply },
@@ -141,6 +140,7 @@ public static class Constants
 		{ "?.", TokenKind.NullableDot },
 		{ "??", TokenKind.NullableDefault },
 		{ "?", TokenKind.Nullable },
+		{ "=", TokenKind.Assign },
 		
 		{ "if", TokenKind.If },
 		{ "else", TokenKind.Else },
