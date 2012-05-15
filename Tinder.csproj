@@ -38,14 +38,27 @@
   <Import Project="$(MSBuildBinPath)\Microsoft.CSharp.targets" />
   <ItemGroup>
     <Compile Include="AssemblyInfo.cs" />
-    <Compile Include="InteractiveServer.cs" />
-    <Compile Include="Parser.cs" />
-    <Compile Include="Tokenizer.cs" />
-    <Compile Include="Utility.cs" />
-    <Compile Include="Types.cs" />
-    <Compile Include="Nodes.cs" />
-    <Compile Include="Passes.cs" />
-    <Compile Include="Cpp.cs" />
-    <Compile Include="Js.cs" />
+    <Compile Include="Passes\StructuralCheckPass.cs" />
+    <Compile Include="Passes\DefineSymbolsPass.cs" />
+    <Compile Include="Passes\ComputeSymbolTypesPass.cs" />
+    <Compile Include="Passes\ComputeTypesPass.cs" />
+    <Compile Include="Passes\FlowValidationPass.cs" />
+    <Compile Include="Passes\DefaultInitializePass.cs" />
+    <Compile Include="Passes\RenameSymbolsPass.cs" />
+    <Compile Include="Targets\Cpp.cs" />
+    <Compile Include="Targets\Js.cs" />
+    <Compile Include="Core\InteractiveServer.cs" />
+    <Compile Include="Core\Nodes.cs" />
+    <Compile Include="Core\Parser.cs" />
+    <Compile Include="Core\Tokenizer.cs" />
+    <Compile Include="Core\Types.cs" />
+    <Compile Include="Core\Utility.cs" />
+    <Compile Include="Core\ErrorMessages.cs" />
+    <Compile Include="Core\Compiler.cs" />
+  </ItemGroup>
+  <ItemGroup>
+    <Folder Include="Passes\" />
+    <Folder Include="Targets\" />
+    <Folder Include="Core\" />
   </ItemGroup>
 </Project>
