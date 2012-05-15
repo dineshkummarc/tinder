@@ -534,7 +534,7 @@ public class FlowValidationPass : DefaultVisitor
 			foreach (SSANode ssaNode in ssaNodes) {
 				IsNull union = IsNull.Unknown;
 				foreach (Knowledge knowledge in allKnowledge) {
-					union |= knowledge.isNull.GetOrDefault(ssaNode, IsNull.Maybe);
+					union |= knowledge.isNull.GetOrDefault(ssaNode, IsNull.Unknown);
 				}
 				result.isNull[ssaNode] = union;
 			}
