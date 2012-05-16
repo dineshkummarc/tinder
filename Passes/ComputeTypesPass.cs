@@ -31,12 +31,7 @@ public class ComputeTypesPass : DefaultVisitor
 	public override Null Visit(TypeExpr node)
 	{
 		context = null;
-		node.computedType = new ErrorType();
-		if (node.type is VoidType) {
-			log.ErrorBadKeyword(node.location, "void");
-		} else {
-			node.computedType = new MetaType { instanceType = node.type };
-		}
+		node.computedType = new MetaType { instanceType = node.type };
 		return null;
 	}
 	
@@ -230,7 +225,7 @@ public class ComputeTypesPass : DefaultVisitor
 		Type type = node.func.computedType;
 		
 		// Check for constructors
-		if (type.IsCompleteType() && argTypes.Count == 0 && type.InstanceType() is ClassType) {
+		if (type.IsInstantiatableType() && argTypes.Count == 0 && type.InstanceType() is ClassType) {
 			node.computedType = type.InstanceType();
 			node.isCtor = true;
 			return null;
@@ -308,7 +303,7 @@ public class ComputeTypesPass : DefaultVisitor
 		node.target.Accept(this);
 		
 		// Check that the cast is valid
-		if (!node.target.computedType.IsCompleteType()) {
+		if (!node.target.computedType.IsInstantiatableType()) {
 			log.ErrorNotUseableType(node.location, node.target.computedType);
 		} else {
 			Type targetType = node.target.computedType.InstanceType();
@@ -465,7 +460,7 @@ public class ComputeTypesPass : DefaultVisitor
 		} else {
 			// Handle normal variable declaration
 			node.type.Accept(this);
-			if (!node.type.computedType.IsCompleteType()) {
+			if (!node.type.computedType.IsInstantiatableType()) {
 				log.ErrorNotUseableType(node.type.location, node.type.computedType);
 			} else {
 				node.symbol.type = node.type.computedType.InstanceType();

@@ -134,8 +134,8 @@ public class JsTargetVisitor : Visitor<string>
 		{ BinaryOp.BitOr, "|" },
 		{ BinaryOp.BitXor, "^" },
 		
-		{ BinaryOp.Equal, "==" },
-		{ BinaryOp.NotEqual, "!=" },
+		{ BinaryOp.Equal, "===" },
+		{ BinaryOp.NotEqual, "!==" },
 		{ BinaryOp.LessThan, "<" },
 		{ BinaryOp.GreaterThan, ">" },
 		{ BinaryOp.LessThanEqual, "<=" },

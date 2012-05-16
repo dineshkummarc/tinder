@@ -388,6 +388,18 @@ public static class Utility
 	{
 		return type is MetaType && !type.InstanceType().HasFreeParams();
 	}
+
+	public static bool IsInstantiatableType(this Type type)
+	{
+		if (!(type is MetaType)) {
+			return false;
+		}
+		type = type.InstanceType();
+		while (type is NullableType) {
+			type = ((NullableType)type).type;
+		}
+		return (type is VoidType) ? false : !type.HasFreeParams();
+	}
 	
 	public static Type ItemType(this Type type)
 	{
