@@ -515,8 +515,9 @@ public class FlowValidationPass : DefaultVisitor
 		{
 			// Add this definition to the knowledge, but don't overwrite SSA
 			// definitions closer to the start point
-			if (!knowledge.ssaNodesForSymbol.ContainsKey(symbol)) {
-				knowledge.ssaNodesForSymbol[symbol] = new HashSet<SSANode> { this };
+			if (!knowledge.allPathsDefineSymbol.GetOrDefault(symbol, false)) {
+				knowledge.ssaNodesForSymbol.GetOrCreate(symbol).Add(this);
+				knowledge.allPathsDefineSymbol[symbol] = true;
 			}
 			return knowledge;
 		}
@@ -551,6 +552,7 @@ public class FlowValidationPass : DefaultVisitor
 	{
 		public readonly Dictionary<SSANode, IsNull> isNull = new Dictionary<SSANode, IsNull>();
 		public readonly Dictionary<Symbol, HashSet<SSANode>> ssaNodesForSymbol = new Dictionary<Symbol, HashSet<SSANode>>();
+		public readonly Dictionary<Symbol, bool> allPathsDefineSymbol = new Dictionary<Symbol, bool>();
 
 		public static Knowledge Union(List<Knowledge> allKnowledge)
 		{
@@ -576,12 +578,15 @@ public class FlowValidationPass : DefaultVisitor
 			}
 			foreach (Symbol symbol in symbols) {
 				HashSet<SSANode> union = new HashSet<SSANode>();
+				bool intersection = true;
 				foreach (Knowledge knowledge in allKnowledge) {
 					if (knowledge.ssaNodesForSymbol.ContainsKey(symbol)) {
 						union.UnionWith(knowledge.ssaNodesForSymbol[symbol]);
 					}
+					intersection &= knowledge.allPathsDefineSymbol.GetOrDefault(symbol, false);
 				}
 				result.ssaNodesForSymbol[symbol] = union;
+				result.allPathsDefineSymbol[symbol] = intersection;
 			}
 
 			return result;

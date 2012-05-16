@@ -58,23 +58,22 @@ int test5(int? a) {
   // return 0 // warning
 }
 
-int test6(int? a, int? b) {
-  if a != null { return a }
-  // if a == null { return 0 } // warning
-  a = b
-  if a != null { return a }
-  if a == null { return 0 }
+void test6(int? a, int? b) {
+  if a != null {
+    b = a
+    if a != null { use(a) }
+    // if a == null { use(0) } // warning
+  }
 }
 
-int test7(int? a) {
+void test7(int? a) {
   int? b
   if a != null {
     b = null
   } else {
-    b = null
+    b = a
   }
-  // return b // error
-  return 0
+  // use(b) // error
 }
 
 int test8(int? a) {
@@ -89,6 +88,15 @@ int test8(int? a) {
   } else {
     return 0
   }
+}
+
+void test9(int? a) {
+  int? b = 1
+  if a != null {
+    b = null
+  } else {
+  }
+  // use(b) // warning
 }
 ";
 	private const string htmlMap = @"

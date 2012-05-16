@@ -5,7 +5,7 @@ bugs:
 - class A { class B { A.B thing } }
   needs to be printed as "A::B thing;" but is currently just "B thing;"
 - list literals need work for C++
-- need to allow void only for return types
 - classes and functions need to be forward declared for C++
 - class A { int A }
   needs to be mangled to avoid problems with constructors in C++
+- need to allow void in function types
