@@ -29,7 +29,6 @@ public class FlowValidationPass : DefaultVisitor
 
 	public override Null Visit(CastExpr node)
 	{
-#if false
 		// Check for provably invalid dereferences of local variables
 		if (node.value is IdentExpr) {
 			IdentExpr identExpr = (IdentExpr)node.value;
@@ -45,7 +44,7 @@ public class FlowValidationPass : DefaultVisitor
 				}
 			}
 		}
-#endif
+
 		return null;
 	}
 }
@@ -284,8 +283,6 @@ public class FlowGraphBuilder : DefaultVisitor
 	{
 		base.Visit(node);
 		
-		// TODO: This mapping is wrong, it's actually one node past the one we want
-
 		// Remember the current flow node for later
 		castExprMap.Add(node, next.GetTrue());
 
@@ -359,15 +356,18 @@ public class FlowGraphBuilder : DefaultVisitor
 
 	public override Null Visit(IfStmt node)
 	{
-		// Calculate flow for the else branch
+		// Calculate flow for the else branch, adding another
+		// node at the end for analysis inside the branch
 		FlowNode end = next.Get();
+		next.Set(new FlowNode(end));
 		if (node.elseBlock != null) {
 			node.elseBlock.Accept(this);
 		}
 		FlowNode elseNode = next.Get();
 
-		// Calculate flow for the then branch
-		next.Set(end);
+		// Calculate flow for the then branch, adding another
+		// node at the end for analysis inside the branch
+		next.Set(new FlowNode(end));
 		node.thenBlock.Accept(this);
 		FlowNode thenNode = next.Get();
 
