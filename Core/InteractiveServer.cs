@@ -117,7 +117,7 @@ void test11() {
     if a == null { a = 1 }
     else if b == null { b = 2 }
     else if c == null { c = 3 }
-    else if d == null { d = 4 }
+    // else if d == null { d = 4 } // warning
   }
   use(c)
   // use(d) // error

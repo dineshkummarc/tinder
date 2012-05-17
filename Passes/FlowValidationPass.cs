@@ -12,6 +12,7 @@ public class FlowValidationPass : DefaultVisitor
 	private readonly FlowGraphBuilder builder = new FlowGraphBuilder();
 	private readonly FlowGraphAnalyzer analyzer = new FlowGraphAnalyzer();
 	private readonly Log log;
+	private bool inFunc;
 
 	public FlowValidationPass(Log log)
 	{
@@ -27,13 +28,45 @@ public class FlowValidationPass : DefaultVisitor
 		return null;
 	}
 
+	public override Null Visit(Block node)
+	{
+		// Check for dead code (code not reached by any flow)
+		Scope old = scope;
+		scope = node.scope;
+		foreach (Stmt stmt in node.stmts) {
+			FlowNode flowNode;
+			if (inFunc && builder.nodeMap.TryGetValue(stmt, out flowNode) && flowNode.knowledge == null) {
+				log.WarningDeadCode(stmt.location);
+				break;
+			}
+			stmt.Accept(this);
+		}
+		scope = old;
+
+		return null;
+	}
+
+	public override Null Visit(FuncDef node)
+	{
+		inFunc = true;
+		base.Visit(node);
+		inFunc = false;
+
+		// Check for a return value (flow must not reach the end of non-void functions)
+		if (node.block != null && !(node.symbol.type.ReturnType() is VoidType) && builder.nodeMap[node].knowledge != null) {
+			log.ErrorNotAllPathsReturnValue(node.location);
+		}
+
+		return null;
+	}
+
 	public override Null Visit(CastExpr node)
 	{
 		// Check for provably invalid dereferences of local variables
 		if (node.value is IdentExpr) {
 			IdentExpr identExpr = (IdentExpr)node.value;
 			if (identExpr.symbol.def.info.funcDef != null) {
-				FlowNode flowNode = builder.castExprMap[node];
+				FlowNode flowNode = builder.nodeMap[node];
 				if (flowNode.knowledge != null) {
 					IsNull isNull = flowNode.knowledge.isNull.GetOrDefault(identExpr.symbol, IsNull.Maybe);
 					if (isNull == IsNull.Yes) {
@@ -293,7 +326,7 @@ public class FlowPair
 // compiled to basic blocks
 public class FlowGraphBuilder : DefaultVisitor
 {
-	public readonly Dictionary<CastExpr, FlowNode> castExprMap = new Dictionary<CastExpr, FlowNode>();
+	public readonly Dictionary<Node, FlowNode> nodeMap = new Dictionary<Node, FlowNode>();
 	public readonly List<FlowNode> roots = new List<FlowNode>();
 	public readonly FlowPair next = new FlowPair();
 
@@ -303,7 +336,11 @@ public class FlowGraphBuilder : DefaultVisitor
 		Scope old = scope;
 		scope = node.scope;
 		for (int i = node.stmts.Count - 1; i >= 0; i--) {
-			node.stmts[i].Accept(this);
+			Stmt stmt = node.stmts[i];
+			stmt.Accept(this);
+			if (!nodeMap.ContainsKey(stmt)) {
+				nodeMap.Add(stmt, next.Get());
+			}
 		}
 		scope = old;
 		return null;
@@ -328,7 +365,7 @@ public class FlowGraphBuilder : DefaultVisitor
 		base.Visit(node);
 		
 		// Remember the current flow node for later
-		castExprMap.Add(node, next.GetTrue());
+		nodeMap.Add(node, next.GetTrue());
 
 		return null;
 	}
@@ -458,7 +495,9 @@ public class FlowGraphBuilder : DefaultVisitor
 	public override Null Visit(FuncDef node)
 	{
 		// Make a new end node to start off the flow
-		next.Set(new FlowNode());
+		FlowNode root = new FlowNode();
+		nodeMap.Add(node, root);
+		next.Set(root);
 		node.block.Accept(this);
 		for (int i = node.argDefs.Count - 1; i >= 0; i--) {
 			node.argDefs[i].Accept(this);
