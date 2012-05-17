@@ -107,6 +107,31 @@ public class AssignNode : FlowNode
 	}
 }
 
+// An assignment to a local variable from another local variable
+public class AliasNode : FlowNode
+{
+	public readonly Symbol leftSymbol;
+	public readonly Symbol rightSymbol;
+
+	public AliasNode(Symbol leftSymbol, Symbol rightSymbol, FlowNode next) : base(next)
+	{
+		this.leftSymbol = leftSymbol;
+		this.rightSymbol = rightSymbol;
+	}
+
+	public override bool Update(Knowledge knowledge)
+	{
+		// Overwrite the type with the assigned type
+		knowledge.isNull[leftSymbol] = knowledge.isNull.GetOrDefault(rightSymbol, IsNull.Maybe);
+		return true;
+	}
+
+	public override string ToString()
+	{
+		return "set " + leftSymbol.def.name + " to " + rightSymbol.def.name;
+	}
+}
+
 // A "==" or "!=" check against null
 public class CheckNode : FlowNode
 {
@@ -328,15 +353,13 @@ public class FlowGraphBuilder : DefaultVisitor
 				);
 			}
 		} else if (node.op == BinaryOp.Assign) {
-			base.Visit(node);
-
 			// Check for assignment to a local variable
 			if (node.left is IdentExpr) {
 				IdentExpr identExpr = (IdentExpr)node.left;
-				if (identExpr.symbol.def.info.funcDef != null) {
-					next.Set(new AssignNode(identExpr.symbol, IsNullFromExpr(node.right), next.Get()));
-				}
+				HandleAssignment(identExpr.symbol, node.right);
 			}
+
+			base.Visit(node);
 		} else {
 			base.Visit(node);
 		}
@@ -408,18 +431,7 @@ public class FlowGraphBuilder : DefaultVisitor
 	public override Null Visit(VarDef node)
 	{
 		base.Visit(node);
-
-		// Check for assignment to a local variable
-		if (node.symbol.def.info.funcDef != null) {
-			IsNull isNull;
-			if (node.value != null) {
-				isNull = IsNullFromExpr(node.value);
-			} else {
-				isNull = IsNull.Maybe;
-			}
-			next.Set(new AssignNode(node.symbol, isNull, next.Get()));
-		}
-
+		HandleAssignment(node.symbol, node.value);
 		return null;
 	}
 
@@ -453,25 +465,45 @@ public class FlowGraphBuilder : DefaultVisitor
 		}
 		return text + "}\n";
 	}
-
-	private static IsNull IsNullFromExpr(Expr node)
+	
+	private void HandleAssignment(Symbol symbol, Expr node)
 	{
-		Console.WriteLine("TODO: Add another FlowNode type for assigning to a local IdentExpr");
-		if (node is CastExpr) {
-			return IsNullFromExpr(((CastExpr)node).value);
-		} else {
-			return IsNullFromType(node.computedType);
-		}
-	}
+		if (symbol.def.info.funcDef != null) {
+			// Handle assigning a variable to an assignment
+			if (node is BinaryExpr) {
+				BinaryExpr binaryExpr = (BinaryExpr)node;
+				if (binaryExpr.op == BinaryOp.Assign) {
+					HandleAssignment(symbol, binaryExpr.left);
+					return;
+				}
+			}
 
-	private static IsNull IsNullFromType(Type type)
-	{
-		if (type is NullableType) {
-			return IsNull.Maybe;
-		} else if (type is NullType) {
-			return IsNull.Yes;
-		} else {
-			return IsNull.No;
+			// Handle assigning a variable to another variable
+			if (node is IdentExpr) {
+				IdentExpr identExpr = (IdentExpr)node;
+				if (identExpr.symbol.def.info.funcDef != null) {
+					next.Set(new AliasNode(symbol, identExpr.symbol, next.Get()));
+					return;
+				}
+			}
+
+			// Handle assignment to a casted value
+			if (node is CastExpr) {
+				HandleAssignment(symbol, ((CastExpr)node).value);
+				return;
+			}
+
+			// Handle regular assignment
+			Type type = (node != null) ? node.computedType : symbol.type;
+			IsNull isNull;
+			if (type is NullableType) {
+				isNull = IsNull.Maybe;
+			} else if (type is NullType) {
+				isNull = IsNull.Yes;
+			} else {
+				isNull = IsNull.No;
+			}
+			next.Set(new AssignNode(symbol, isNull, next.Get()));
 		}
 	}
 }
