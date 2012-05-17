@@ -8,4 +8,3 @@ bugs:
 - classes and functions need to be forward declared for C++
 - class A { int A }
   needs to be mangled to avoid problems with constructors in C++
-- need to allow void in function types

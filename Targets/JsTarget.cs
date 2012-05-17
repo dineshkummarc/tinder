@@ -6,7 +6,7 @@ public static class JsTarget
 	// From https://developer.mozilla.org/en/JavaScript/Reference/Reserved_Words
 	// and https://developer.mozilla.org/en/JavaScript/Reference/Global_Objects
 	private static readonly HashSet<string> reservedWords = new HashSet<string> {
-	// Reserved words
+		// Reserved words
 		"break",
 		"case",
 		"catch",
@@ -34,7 +34,7 @@ public static class JsTarget
 		"while",
 		"with",
 
-	// Words reserved for possible future use
+		// Words reserved for possible future use
 		"class",
 		"enum",
 		"export",
@@ -52,7 +52,7 @@ public static class JsTarget
 		"yield",
 		"const",
 		
-	// Standard global objects
+		// Standard global objects
 		"Array",
 		"ArrayBuffer",
 		"Boolean",
@@ -96,7 +96,7 @@ public static class JsTarget
 		"uneval",
 		"URIError",
 		
-	// Other
+		// Other
 		"constructor",
 		"prototype",
 		"null",
@@ -195,8 +195,21 @@ public class JsTargetVisitor : Visitor<string>
 
 	public override string Visit(IfStmt node)
 	{
-		return indent + "if (" + node.test.Accept(this).StripParens() + ") " + node.thenBlock.Accept(this) + (
-			node.elseBlock == null ? "" : " else " + node.elseBlock.Accept(this)) + "\n";
+		string text = indent;
+		while (true) {
+			text += "if (" + node.test.Accept(this).StripParens() + ") " + node.thenBlock.Accept(this);
+			if (node.elseBlock == null) {
+				break;
+			}
+			text += " else ";
+			if (node.elseBlock.stmts.Count == 1 && node.elseBlock.stmts[0] is IfStmt) {
+				node = (IfStmt)node.elseBlock.stmts[0];
+			} else {
+				text += node.elseBlock.Accept(this) + "\n";
+				break;
+			}
+		}
+		return text;
 	}
 
 	public override string Visit(ReturnStmt node)

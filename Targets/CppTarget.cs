@@ -5,7 +5,7 @@ public static class CppTarget
 {
 	// From http://en.cppreference.com/w/cpp/keyword
 	private static readonly HashSet<string> reservedWords = new HashSet<string> {
-	// Keywords
+		// Keywords
 		"alignas",
 		"aliasof",
 		"and",
@@ -91,7 +91,7 @@ public static class CppTarget
 		"xor",
 		"xor_eq",
 		
-	// Other
+		// Other
 		"std",
 		"vector",
 		"string",
@@ -219,8 +219,21 @@ public class CppTargetVisitor : Visitor<string>
 
 	public override string Visit(IfStmt node)
 	{
-		return indent + "if (" + node.test.Accept(this).StripParens() + ") " + node.thenBlock.Accept(this) + (
-			node.elseBlock == null ? "" : " else " + node.elseBlock.Accept(this)) + "\n";
+		string text = indent;
+		while (true) {
+			text += "if (" + node.test.Accept(this).StripParens() + ") " + node.thenBlock.Accept(this);
+			if (node.elseBlock == null) {
+				break;
+			}
+			text += " else ";
+			if (node.elseBlock.stmts.Count == 1 && node.elseBlock.stmts[0] is IfStmt) {
+				node = (IfStmt)node.elseBlock.stmts[0];
+			} else {
+				text += node.elseBlock.Accept(this) + "\n";
+				break;
+			}
+		}
+		return text;
 	}
 
 	public override string Visit(ReturnStmt node)
