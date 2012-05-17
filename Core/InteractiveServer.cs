@@ -100,16 +100,7 @@ void test9(int? a) {
   // use(b) // warning
 }
 
-void test10(int? a) {
-  a = 1
-  while something() {
-    // use(a) // warning
-    a = null
-  }
-  // use(a) // warning
-}
-
-void test11(int? a, int? b) {
+void test10(int? a, int? b) {
   b = null
   if something() {
     a = 1
@@ -118,6 +109,18 @@ void test11(int? a, int? b) {
   if b != null {
     use(a)
   }
+}
+
+void test11() {
+  int? a, b, c, d
+  while a == null or b == null or c == null {
+    if a == null { a = 1 }
+    else if b == null { b = 2 }
+    else if c == null { c = 3 }
+    else if d == null { d = 4 }
+  }
+  use(c)
+  // use(d) // error
 }
 ";
 	private const string htmlMap = @"

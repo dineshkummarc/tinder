@@ -9,17 +9,10 @@ using System.Collections.Generic;
 //
 public class FlowValidationPass : DefaultVisitor
 {
+	private readonly FlowGraphBuilder builder = new FlowGraphBuilder();
+	private readonly FlowGraphAnalyzer analyzer = new FlowGraphAnalyzer();
 	private readonly Log log;
-	private readonly Dictionary<FlowNode, Knowledge> knowledgeCache = new Dictionary<FlowNode, Knowledge>();
-	private FlowNode rootNode;
-	private Pair currentPair;
-	private bool inFunc;
-	private int nextID;
 
-	// Used to saving DOT flow graphs for debugging
-	private HashSet<FlowNode> currentNodes;
-	private string graphText;
-	
 	public FlowValidationPass(Log log)
 	{
 		this.log = log;
@@ -27,130 +20,297 @@ public class FlowValidationPass : DefaultVisitor
 
 	public override Null Visit(Module node)
 	{
+		node.Accept(builder);
+		analyzer.Run(builder);
+		File.WriteAllText("graphs.dot", builder.ToDotGraph());
 		base.Visit(node);
-		File.WriteAllText("graphs.dot", "digraph {\n" + graphText + "}\n");
 		return null;
 	}
+
+	public override Null Visit(CastExpr node)
+	{
+#if false
+		// Check for provably invalid dereferences of local variables
+		if (node.value is IdentExpr) {
+			IdentExpr identExpr = (IdentExpr)node.value;
+			if (identExpr.symbol.def.info.funcDef != null) {
+				FlowNode flowNode = builder.castExprMap[node];
+				if (flowNode.knowledge != null) {
+					IsNull isNull = flowNode.knowledge.isNull.GetOrDefault(identExpr.symbol, IsNull.Maybe);
+					if (isNull == IsNull.Yes) {
+						log.ErrorNullDereference(node.location, identExpr.name);
+					} else if (isNull == IsNull.Maybe) {
+						log.WarningNullableDereference(node.location, identExpr.name);
+					}
+				}
+			}
+		}
+#endif
+		return null;
+	}
+}
+
+// Constructed so that intersection is "&" and union is "|"
+public enum IsNull
+{
+	No = 1,
+	Yes = 2,
+	Maybe = 3,
+	Unknown = 0,
+}
+
+// A node in the CFG that would be built if the AST were compiled to basic
+// blocks. This graph contains additional nodes involving flow, such as
+// the CheckNode node which restricts the nullability of local variables.
+public class FlowNode
+{
+	public readonly List<FlowNode> next;
+	public Knowledge knowledge;
+
+	public FlowNode(params FlowNode[] next)
+	{
+		this.next = new List<FlowNode>(next);
+	}
+
+	public virtual bool Update(Knowledge knowledge)
+	{
+		return true;
+	}
+
+	public override string ToString()
+	{
+		return "(none)";
+	}
+}
+
+// An assignment to a local variable
+public class AssignNode : FlowNode
+{
+	public readonly Symbol symbol;
+	public readonly IsNull isNull;
+
+	public AssignNode(Symbol symbol, IsNull isNull, FlowNode next) : base(next)
+	{
+		this.symbol = symbol;
+		this.isNull = isNull;
+	}
+
+	public override bool Update(Knowledge knowledge)
+	{
+		// Overwrite the type with the assigned type
+		knowledge.isNull[symbol] = isNull;
+		return true;
+	}
+
+	public override string ToString()
+	{
+		return "set " + symbol.def.name + " to " + isNull.AsString();
+	}
+}
+
+// A "==" or "!=" check against null
+public class CheckNode : FlowNode
+{
+	public readonly Symbol symbol;
+	public readonly IsNull isNull;
+
+	public CheckNode(Symbol symbol, IsNull isNull, FlowNode next) : base(next)
+	{
+		this.symbol = symbol;
+		this.isNull = isNull;
+	}
+
+	public override bool Update(Knowledge knowledge)
+	{
+		// Narrow to more specific knowledge
+		IsNull intersection = isNull & knowledge.isNull.GetOrDefault(symbol, IsNull.Maybe);
+		knowledge.isNull[symbol] = intersection;
+
+		// A contradiction means flow out of this node is impossible
+		return (intersection != IsNull.Unknown);
+	}
+
+	public override string ToString()
+	{
+		return symbol.def.name + " is " + isNull.AsString();
+	}
+}
+
+// The nullability knowledge that we have at any one point in the program
+public class Knowledge
+{
+	public readonly Dictionary<Symbol, IsNull> isNull = new Dictionary<Symbol, IsNull>();
+
+	public Knowledge Clone()
+	{
+		Knowledge clone = new Knowledge();
+		clone.isNull.AddRange(isNull);
+		return clone;
+	}
+
+	public void UnionWith(Knowledge other)
+	{
+		HashSet<Symbol> symbols = new HashSet<Symbol>();
+		symbols.AddRange(isNull.Keys);
+		symbols.AddRange(other.isNull.Keys);
+		foreach (Symbol symbol in symbols) {
+			isNull[symbol] = isNull.GetOrDefault(symbol, IsNull.Unknown) | other.isNull.GetOrDefault(symbol, IsNull.Unknown);
+		}
+	}
+
+	public override string ToString()
+	{
+		return string.Join(", ", isNull.Items().ConvertAll(pair => {
+			return pair.Key.def.name + " is " + pair.Value.AsString();
+		}).ToArray());
+	}
+
+	public override bool Equals(object obj)
+	{
+		Knowledge other = (Knowledge)obj;
+		IsNull value;
+		foreach (KeyValuePair<Symbol, IsNull> pair in isNull) {
+			if (!other.isNull.TryGetValue(pair.Key, out value) || value != pair.Value) {
+				return false;
+			}
+		}
+		foreach (KeyValuePair<Symbol, IsNull> pair in other.isNull) {
+			if (!isNull.TryGetValue(pair.Key, out value) || value != pair.Value) {
+				return false;
+			}
+		}
+		return true;
+	}
+
+	public override int GetHashCode()
+	{
+		int hashCode = 0;
+		foreach (KeyValuePair<Symbol, IsNull> pair in isNull) {
+			hashCode ^= pair.Key.GetHashCode() ^ pair.Value.GetHashCode();
+		}
+		return hashCode;
+	}
+}
+
+// A tuple of FlowNodes that has either one or two elements. One element
+// indicates that flow is linear and two elements indicates flow is branched.
+public class FlowPair
+{
+	public readonly HashSet<FlowNode> nodes;
+	private FlowNode first, second;
+
+	public FlowPair()
+	{
+		this.nodes = new HashSet<FlowNode>();
+	}
+
+	public void Clear()
+	{
+		first = second = null;
+	}
+
+	public FlowNode Get()
+	{
+		// Merge multiple next flow nodes to make sure there is only one next flow node
+		if (second != null) {
+			first = new FlowNode(first, second);
+			second = null;
+			nodes.Add(first);
+		}
+		return first;
+	}
+
+	public FlowNode GetTrue()
+	{
+		return first;
+	}
+
+	public FlowNode GetFalse()
+	{
+		return second ?? first;
+	}
+
+	public void Set(FlowNode next)
+	{
+		nodes.Add(next);
+		first = next;
+		second = null;
+	}
+
+	public void Set(FlowNode trueNode, FlowNode falseNode)
+	{
+		nodes.Add(trueNode);
+		nodes.Add(falseNode);
+		first = trueNode;
+		second = falseNode;
+	}
+}
+
+// A visitor that builds the flow graph that would be built if the AST were
+// compiled to basic blocks
+public class FlowGraphBuilder : DefaultVisitor
+{
+	public readonly Dictionary<CastExpr, FlowNode> castExprMap = new Dictionary<CastExpr, FlowNode>();
+	public readonly List<FlowNode> roots = new List<FlowNode>();
+	public readonly FlowPair next = new FlowPair();
 
 	public override Null Visit(Block node)
 	{
-		// Don't do analysis outside functions
-		if (!inFunc) {
-			return base.Visit(node);
-		}
-
-		// Check for dead code
+		// Reverse visitation order because flow is calculated bottom to top
 		Scope old = scope;
 		scope = node.scope;
-		foreach (Stmt stmt in node.stmts) {
-			if (KnowledgeForNode(currentPair.trueNode) == null) {
-				log.WarningDeadCode(stmt.location);
-				break;
-			}
-			stmt.Accept(this);
+		for (int i = node.stmts.Count - 1; i >= 0; i--) {
+			node.stmts[i].Accept(this);
 		}
 		scope = old;
-
-		return null;
-	}
-
-	public override Null Visit(ExternalStmt node)
-	{
-		// There is no flow to validate in external blocks
-		return null;
-	}
-	
-	public override Null Visit(FuncDef node)
-	{
-		// Prepare for flow analysis
-		inFunc = true;
-		knowledgeCache.Clear();
-		currentNodes = new HashSet<FlowNode>();
-		rootNode = Record(new RootNode());
-		currentPair = new Pair(rootNode);
-
-		// Perform flow analysis
-		base.Visit(node);
-
-		// Check for a return value
-		if (!(node.symbol.type.ReturnType() is VoidType) && KnowledgeForNode(currentPair.trueNode) != null) {
-			log.ErrorNotAllPathsReturnValue(node.location);
-		}
-
-		// Log the generated graph (for debugging)
-		graphText += ToDotGraph(node.name);
-
-		inFunc = false;
-		return null;
-	}
-
-	public override Null Visit(VarDef node)
-	{
-		// Don't do analysis outside functions
-		if (!inFunc) {
-			return base.Visit(node);
-		}
-
-		// Create a new SSA definition that is unique to this node
-		SSANode ssaNode = Record(new SSANode(node.symbol, nextID++, currentPair.trueNode));
-		currentPair = new Pair(ssaNode);
-
-		// Update the knowledge based on the initial value, if any
-		IsNull isNull = (node.value != null) ? IsNullFromExpr(node.value) : IsNullFromType(node.symbol.type);
-		currentPair = new Pair(Record(new NullableNode(ssaNode, isNull, currentPair.trueNode)));
-
 		return null;
 	}
 
 	public override Null Visit(UnaryExpr node)
 	{
-		// Don't do analysis outside functions
-		if (!inFunc) {
-			return base.Visit(node);
-		}
-
 		base.Visit(node);
 
 		// Invert the flow for boolean not
 		if (node.op == UnaryOp.Not) {
-			currentPair = currentPair.Inverse();
+			if (next.GetTrue() != next.GetFalse()) {
+				next.Set(new FlowNode(next.GetFalse(), next.GetTrue()));
+			}
 		}
+
+		return null;
+	}
+
+	public override Null Visit(CastExpr node)
+	{
+		base.Visit(node);
+		
+		// TODO: This mapping is wrong, it's actually one node past the one we want
+
+		// Remember the current flow node for later
+		castExprMap.Add(node, next.GetTrue());
 
 		return null;
 	}
 
 	public override Null Visit(BinaryExpr node)
 	{
-		// Don't do analysis outside functions
-		if (!inFunc) {
-			return base.Visit(node);
-		}
+		if (node.op == BinaryOp.And || node.op == BinaryOp.Or) {
+			FlowNode endTrue = next.GetTrue();
+			FlowNode endFalse = next.GetFalse();
 
-		if (node.op == BinaryOp.And) {
+			// Calculate flow for the right expression
+			node.right.Accept(this);
+			FlowNode right = next.Get();
+
+			// Apply the short-circuit logic
+			if (node.op == BinaryOp.And) {
+				next.Set(right, endFalse);
+			} else {
+				next.Set(endTrue, right);
+			}
+
 			// Calculate flow for the left expression
 			node.left.Accept(this);
-			Pair leftPair = currentPair;
-			
-			// Calculate flow for the right expression assuming the left condition was executed
-			node.right.Accept(this);
-			Pair rightPair = currentPair;
-			
-			// Join the flow of both false branches
-			FlowNode joinNode = Join(leftPair.falseNode, rightPair.falseNode);
-			currentPair = new Pair(rightPair.trueNode, joinNode);
-		} else if (node.op == BinaryOp.Or) {
-			// Calculate flow for the left expression
-			node.left.Accept(this);
-			Pair leftPair = currentPair;
-			
-			// Calculate flow for the right expression assuming the left condition wasn't executed
-			currentPair = leftPair.Inverse();
-			node.right.Accept(this);
-			Pair rightPair = currentPair;
-			
-			// Join the flow of both true branches
-			FlowNode joinNode = Join(leftPair.trueNode, rightPair.trueNode);
-			currentPair = new Pair(joinNode, rightPair.falseNode);
 		} else if (node.op == BinaryOp.Equal || node.op == BinaryOp.NotEqual) {
 			base.Visit(node);
 			
@@ -164,26 +324,11 @@ public class FlowValidationPass : DefaultVisitor
 				return null;
 			}
 			if (identExpr.symbol.def.info.funcDef != null) {
-				Knowledge knowledge = KnowledgeForNode(currentPair.trueNode);
-				if (knowledge != null) {
-					// Split the flow into null and non-null paths
-					FlowNode isNullNode = currentPair.trueNode;
-					FlowNode isNotNullNode = currentPair.trueNode;
-					HashSet<SSANode> ssaNodes;
-					if (knowledge.ssaNodesForSymbol.TryGetValue(identExpr.symbol, out ssaNodes)) {
-						foreach (SSANode ssaNode in ssaNodes) {
-							isNullNode = Record(new NullableNode(ssaNode, IsNull.Yes, isNullNode));
-							isNotNullNode = Record(new NullableNode(ssaNode, IsNull.No, isNotNullNode));
-						}
-						
-						// Set up true and false branches
-						if (node.op == BinaryOp.Equal) {
-							currentPair = new Pair(isNullNode, isNotNullNode);
-						} else {
-							currentPair = new Pair(isNotNullNode, isNullNode);
-						}
-					}
-				}
+				IsNull isNull = (node.op == BinaryOp.Equal) ? IsNull.Yes : IsNull.No;
+				next.Set(
+					new CheckNode(identExpr.symbol, isNull, next.GetTrue()),
+					new CheckNode(identExpr.symbol, isNull ^ IsNull.Maybe, next.GetFalse())
+				);
 			}
 		} else if (node.op == BinaryOp.Assign) {
 			base.Visit(node);
@@ -192,13 +337,7 @@ public class FlowValidationPass : DefaultVisitor
 			if (node.left is IdentExpr) {
 				IdentExpr identExpr = (IdentExpr)node.left;
 				if (identExpr.symbol.def.info.funcDef != null) {
-					// Create a new SSA node for this assignment
-					SSANode ssaNode = Record(new SSANode(identExpr.symbol, nextID++, currentPair.trueNode));
-					currentPair = new Pair(ssaNode);
-
-					// Record narrowing information based on the new value
-					IsNull isNull = IsNullFromExpr(node.right);
-					currentPair = new Pair(Record(new NullableNode(ssaNode, isNull, currentPair.trueNode)));
+					next.Set(new AssignNode(identExpr.symbol, IsNullFromExpr(node.right), next.Get()));
 				}
 			}
 		} else {
@@ -210,116 +349,117 @@ public class FlowValidationPass : DefaultVisitor
 
 	public override Null Visit(ReturnStmt node)
 	{
-		// Don't do analysis outside functions
-		if (!inFunc) {
-			return base.Visit(node);
-		}
-
 		base.Visit(node);
 
 		// Return statements stop flow completely
-		currentPair = new Pair(null);
+		Console.WriteLine("TODO: stop control flow for return statements");
 
 		return null;
 	}
 
 	public override Null Visit(IfStmt node)
 	{
-		// Don't do analysis outside functions
-		if (!inFunc) {
-			return base.Visit(node);
-		}
-
-		// Calculate flow for the test expression
-		InsertLabel("before if");
-		node.test.Accept(this);
-		Pair testPair = currentPair;
-
-		// Propagate true flow down the then branch
-		currentPair = new Pair(testPair.trueNode);
-		InsertLabel("then");
-		node.thenBlock.Accept(this);
-		Pair thenPair = currentPair;
-		
-		// Propagate false flow down the else branch
-		currentPair = new Pair(testPair.falseNode);
+		// Calculate flow for the else branch
+		FlowNode end = next.Get();
 		if (node.elseBlock != null) {
-			InsertLabel("else");
 			node.elseBlock.Accept(this);
 		}
-		Pair elsePair = currentPair;
-		
-		// Unify flow from the two branches
-		FlowNode joinNode = Join(thenPair.trueNode, elsePair.trueNode);
-		currentPair = new Pair(joinNode);
-		InsertLabel("after if");
+		FlowNode elseNode = next.Get();
+
+		// Calculate flow for the then branch
+		next.Set(end);
+		node.thenBlock.Accept(this);
+		FlowNode thenNode = next.Get();
+
+		// Calculate flow for the test expression
+		next.Set(thenNode, elseNode);
+		node.test.Accept(this);
 
 		return null;
 	}
 
-	public override Null Visit(CastExpr node)
+	public override Null Visit(WhileStmt node)
 	{
-		// Don't do analysis outside functions
-		if (!inFunc) {
-			return base.Visit(node);
-		}
+		// Create an flow node for the back edge
+		FlowNode end = next.Get();
+		FlowNode loop = new FlowNode();
 
+		// Calculate flow for the body block
+		next.Set(loop);
+		node.block.Accept(this);
+		FlowNode body = next.Get();
+
+		// Calculate flow for the test expression
+		next.Set(body, end);
+		node.test.Accept(this);
+
+		// Link the back edge to before the test expression
+		loop.next.Add(next.Get());
+
+		return null;
+	}
+
+	public override Null Visit(ExternalStmt node)
+	{
+		// There is no flow to validate in external blocks
+		return null;
+	}
+
+	public override Null Visit(VarDef node)
+	{
 		base.Visit(node);
 
-		// Check for provably invalid dereferences
-		if (node.value is IdentExpr) {
-			IdentExpr identExpr = (IdentExpr)node.value;
-			IsNull isNull = IsNullForSymbol(identExpr.symbol);
-			if (isNull == IsNull.Yes) {
-				log.ErrorNullDereference(node.location, identExpr.name);
-			} else if (isNull == IsNull.Maybe) {
-				log.WarningNullableDereference(node.location, identExpr.name);
+		// Check for assignment to a local variable
+		if (node.symbol.def.info.funcDef != null) {
+			IsNull isNull;
+			if (node.value != null) {
+				isNull = IsNullFromExpr(node.value);
+			} else {
+				isNull = IsNull.Maybe;
 			}
+			next.Set(new AssignNode(node.symbol, isNull, next.Get()));
 		}
 
 		return null;
 	}
 
-	private void InsertLabel(string text)
+	public override Null Visit(FuncDef node)
 	{
-#if false
-		if (currentPair.trueNode != null) {
-			currentPair = new Pair(Record(new LabelNode(text, currentPair.trueNode)));
+		// Make a new end node to start off the flow
+		next.Set(new FlowNode());
+		node.block.Accept(this);
+		for (int i = node.argDefs.Count - 1; i >= 0; i--) {
+			node.argDefs[i].Accept(this);
 		}
-#endif
+		roots.Add(next.Get());
+		return null;
 	}
 
-	private IsNull IsNullForSymbol(Symbol symbol)
+	public string ToDotGraph()
 	{
-		Knowledge knowledge = KnowledgeForNode(currentPair.trueNode);
-		if (knowledge != null) {
-			HashSet<SSANode> ssaNodes;
-			if (knowledge.ssaNodesForSymbol.TryGetValue(symbol, out ssaNodes)) {
-				// Find the union over all SSA nodes for this symbol
-				IsNull union = IsNull.Unknown;
-				foreach (SSANode ssaNode in ssaNodes) {
-					if (ssaNode.symbol == symbol) {
-						union |= knowledge.isNull.GetOrDefault(ssaNode, IsNull.Unknown);
-					}
-				}
-				return union;
+		// Generate a graph in GraphViz format
+		Dictionary<FlowNode, int> ids = new Dictionary<FlowNode, int>();
+		int nextID = 0;
+		string text = "digraph {\n";
+		foreach (FlowNode node in next.nodes) {
+			int id = ids[node] = nextID++;
+			string label = "action: " + node.ToString() + "\n" + (node.knowledge != null ? node.knowledge.ToString() : "impossible");
+			text += "  n" + id + " [label = " + label.ToQuotedString() + "];\n";
+		}
+		foreach (FlowNode node in next.nodes) {
+			foreach (FlowNode nextNode in node.next) {
+				text += "  n" + ids[node] + " -> n" + ids[nextNode] + ";\n";
 			}
 		}
-		return IsNull.Unknown;
+		return text + "}\n";
 	}
 
-	private IsNull IsNullFromExpr(Expr node)
+	private static IsNull IsNullFromExpr(Expr node)
 	{
+		Console.WriteLine("TODO: Add another FlowNode type for assigning to a local IdentExpr");
 		if (node is CastExpr) {
 			return IsNullFromExpr(((CastExpr)node).value);
 		} else {
-			if (node is IdentExpr) {
-				IdentExpr identExpr = (IdentExpr)node;
-				IsNull isNull = IsNullForSymbol(identExpr.symbol);
-				if (isNull != IsNull.Unknown) {
-					return isNull;
-				}
-			}
 			return IsNullFromType(node.computedType);
 		}
 	}
@@ -334,333 +474,69 @@ public class FlowValidationPass : DefaultVisitor
 			return IsNull.No;
 		}
 	}
-
-	private Knowledge KnowledgeForNode(FlowNode node)
-	{
-		// Compute all knowledge for the current flow node, and cache it for
-		// future use inside the same flow node. Note that we can't reuse flow
-		// results in the cache in the middle of the computation because the
-		// knowledge of a child node cannot be derived from the knowledge of
-		// the parent node. The direction of information is in fact the reverse,
-		// from child to parent.
-		Knowledge knowledge = null;
-		if (node != null && !knowledgeCache.TryGetValue(node, out knowledge)) {
-			knowledge = knowledgeCache[node] = node.ComputeKnowledge(rootNode);
-		}
-		return knowledge;
-	}
-	
-	private FlowNode Join(FlowNode left, FlowNode right)
-	{
-		if (left == null || left == right) {
-			return right;
-		} else if (right == null) {
-			return left;
-		} else {
-			return Record(new JoinNode(left, right));
-		}
-	}
-
-	private T Record<T>(T node) where T : FlowNode
-	{
-		currentNodes.Add(node);
-		return node;
-	}
-
-	private string ToDotGraph(string name)
-	{
-		Dictionary<FlowNode, int> ids = new Dictionary<FlowNode, int>();
-		string text = "  subgraph cluster" + nextID++ + " {\n";
-		text += "    label = " + name.ToQuotedString() + ";\n";
-		foreach (FlowNode node in currentNodes) {
-			int id = ids[node] = nextID++;
-			string label;
-			if (node is RootNode) {
-				label = "root";
-			} else if (node is LabelNode) {
-				label = ((LabelNode)node).text;
-			} else if (node is JoinNode) {
-				label = "join";
-			} else if (node is SSANode) {
-				label = "ssa " + (SSANode)node;
-			} else if (node is NullableNode) {
-				label = ((NullableNode)node).ssaNode + " is " + ((NullableNode)node).isNull.AsString();
-			} else {
-				continue;
-			}
-			Knowledge knowledge = KnowledgeForNode(node);
-			label += "\n" + (knowledge != null ? knowledge.ToString() : "impossible");
-			text += "    n" + id + " [label = " + label.ToQuotedString() + "];\n";
-		}
-		foreach (FlowNode node in currentNodes) {
-			foreach (FlowNode parent in node.parents) {
-				text += "    n" + ids[parent] + " -> n" + ids[node] + ";\n";
-			}
-		}
-		return text + "  }\n";
-	}
-
-	// A tuple of two FlowNode instances, used to handle building graphs from
-	// short-circuit "and" and "or" operators. It is always the case that
-	// trueNode == falseNode during normal control flow.
-	private class Pair
-	{
-		public readonly FlowNode trueNode;
-		public readonly FlowNode falseNode;
-
-		public Pair(FlowNode node)
-		{
-			trueNode = falseNode = node;
-		}
-
-		public Pair(FlowNode trueNode, FlowNode falseNode)
-		{
-			this.trueNode = trueNode;
-			this.falseNode = falseNode;
-		}
-
-		public Pair Inverse()
-		{
-			return new Pair(falseNode, trueNode);
-		}
-	}
-
-	// A node in the CFG that would be built if the AST were compiled to basic
-	// blocks. This graph contains additional nodes involving flow, such
-	// as the Nullable node which restricts the type of variables.
-	private abstract class FlowNode
-	{
-		public readonly List<FlowNode> parents;
-	
-		public FlowNode(List<FlowNode> parents)
-		{
-			this.parents = parents;
-
-			foreach (FlowNode parent in parents) {
-				if (parent == null) {
-					throw new Exception("null parents are not allowed");
-				}
-			}
-		}
-
-		public virtual Knowledge AddTo(Knowledge knowledge)
-		{
-			return knowledge;
-		}
-
-		public Knowledge ComputeKnowledge(FlowNode rootNode)
-		{
-			// List the nodes in reverse postorder so that when we visit a node we
-			// can be sure that its predecessors were visited first. Also record
-			// the predecessors for each node. These are not precomputed and stored
-			// because any node can be part of many different supergraphs and will
-			// potentially have a different set of previous nodes for each one.
-			Dictionary<FlowNode, List<FlowNode>> childNodesForNode = new Dictionary<FlowNode, List<FlowNode>>();
-			HashSet<FlowNode> visited = new HashSet<FlowNode>();
-			List<FlowNode> postOrder = new List<FlowNode>();
-			Action<FlowNode> computePostOrder = (FlowNode node) => {
-				if (!visited.Contains(node)) {
-					visited.Add(node);
-					foreach (FlowNode parent in node.parents) {
-						childNodesForNode.GetOrCreate(parent).Add(node);
-						computePostOrder(parent);
-					}
-					postOrder.Add(node);
-				}
-			};
-			computePostOrder(this);
-			
-			// Propagate knowledge from the start node to the root node
-			Dictionary<FlowNode, Knowledge> knowledgeForNode = new Dictionary<FlowNode, Knowledge>();
-			for (int i = postOrder.Count - 1; i >= 0; i--) {
-				FlowNode node = postOrder[i];
-	
-				// Merge the information from previous nodes
-				Knowledge knowledge;
-				List<FlowNode> childNodes = childNodesForNode.GetOrCreate(node);
-				List<Knowledge> childKnowledge = childNodes.ConvertAll(n => knowledgeForNode[n]).FindAll(n => n != null);
-				if (childKnowledge.Count > 0) {
-					// The knowledge is the union over all child knowledge
-					knowledge = Knowledge.Union(childKnowledge);
-				} else if (childNodes.Count > 0) {
-					// All previous nodes have no flow, continuation is impossible
-					knowledge = null;
-				} else {
-					// This is the first node and we are starting from zero knowledge
-					knowledge = new Knowledge();
-				}
-				
-				// Add the knowledge contained in this node
-				if (knowledge != null) {
-					knowledge = node.AddTo(knowledge);
-				}
-				
-				// Propagate knowledge all the way to the root node
-				if (node == rootNode) {
-					return knowledge;
-				}
-				
-				// Store the flow out of this node, if any
-				knowledgeForNode[node] = knowledge;
-			}
-
-			return null;
-		}
-	}
-	
-	private class RootNode : FlowNode
-	{
-		public RootNode() : base(new List<FlowNode>())
-		{
-		}
-	}
-	
-	private class JoinNode : FlowNode
-	{
-		public JoinNode(FlowNode left, FlowNode right) : base(new List<FlowNode> { left, right })
-		{
-		}
-	}
-
-	private class LabelNode : FlowNode
-	{
-		public string text;
-
-		public LabelNode(string text, FlowNode parent) : base(new List<FlowNode> { parent })
-		{
-			this.text = text;
-		}
-	}
-	
-	private class SSANode : FlowNode
-	{
-		public readonly Symbol symbol;
-		public readonly int id;
-	
-		public SSANode(Symbol symbol, int id, FlowNode parent) : base(new List<FlowNode> { parent })
-		{
-			this.symbol = symbol;
-			this.id = id;
-		}
-
-		public override string ToString()
-		{
-			return symbol.def.name + id;
-		}
-
-		public override Knowledge AddTo(Knowledge knowledge)
-		{
-			// Add this definition to the knowledge, but don't overwrite SSA
-			// definitions closer to the start point
-			if (!knowledge.allPathsDefineSymbol.GetOrDefault(symbol, false)) {
-				knowledge.ssaNodesForSymbol.GetOrCreate(symbol).Add(this);
-				knowledge.allPathsDefineSymbol[symbol] = true;
-			}
-			return knowledge;
-		}
-	}
-
-	private class NullableNode : FlowNode
-	{
-		public readonly SSANode ssaNode;
-		public readonly IsNull isNull;
-	
-		public NullableNode(SSANode ssaNode, IsNull isNull, FlowNode parent) : base(new List<FlowNode> { parent })
-		{
-			this.ssaNode = ssaNode;
-			this.isNull = isNull;
-		}
-
-		public override Knowledge AddTo(Knowledge knowledge)
-		{
-			// Narrow to more specific knowledge
-			IsNull intersection = knowledge.isNull.GetOrDefault(ssaNode, IsNull.Maybe);
-			intersection &= isNull;
-			knowledge.isNull[ssaNode] = intersection;
-
-			// A contradiction means flow out of this node is impossible
-			return (intersection == IsNull.Unknown) ? null : knowledge;
-		}
-	}
-
-	// Holds all knowledge about a set of SSA variables. Knowledge through an
-	// impossible flow path is represented by null.
-	private class Knowledge
-	{
-		public readonly Dictionary<SSANode, IsNull> isNull = new Dictionary<SSANode, IsNull>();
-		public readonly Dictionary<Symbol, HashSet<SSANode>> ssaNodesForSymbol = new Dictionary<Symbol, HashSet<SSANode>>();
-		public readonly Dictionary<Symbol, bool> allPathsDefineSymbol = new Dictionary<Symbol, bool>();
-
-		public static Knowledge Union(List<Knowledge> allKnowledge)
-		{
-			Knowledge result = new Knowledge();
-
-			// Take the union of all Knowledge.isNull maps
-			HashSet<SSANode> ssaNodes = new HashSet<SSANode>();
-			foreach (Knowledge knowledge in allKnowledge) {
-				ssaNodes.AddRange(knowledge.isNull.Keys);
-			}
-			foreach (SSANode ssaNode in ssaNodes) {
-				IsNull union = IsNull.Unknown;
-				foreach (Knowledge knowledge in allKnowledge) {
-					union |= knowledge.isNull.GetOrDefault(ssaNode, IsNull.Unknown);
-				}
-				result.isNull[ssaNode] = union;
-			}
-			
-			// Take the union of all Knowledge.ssaNodesForSymbol maps
-			HashSet<Symbol> symbols = new HashSet<Symbol>();
-			foreach (Knowledge knowledge in allKnowledge) {
-				symbols.AddRange(knowledge.ssaNodesForSymbol.Keys);
-			}
-			foreach (Symbol symbol in symbols) {
-				HashSet<SSANode> union = new HashSet<SSANode>();
-				bool intersection = true;
-				foreach (Knowledge knowledge in allKnowledge) {
-					if (knowledge.ssaNodesForSymbol.ContainsKey(symbol)) {
-						union.UnionWith(knowledge.ssaNodesForSymbol[symbol]);
-					}
-					intersection &= knowledge.allPathsDefineSymbol.GetOrDefault(symbol, false);
-				}
-				result.ssaNodesForSymbol[symbol] = union;
-				result.allPathsDefineSymbol[symbol] = intersection;
-			}
-
-			return result;
-		}
-
-		public override string ToString()
-		{
-#if false
-			// Simpler representation
-			return string.Join(", ", ssaNodesForSymbol.Items().ConvertAll(pair => {
-				IsNull union = IsNull.Unknown;
-				foreach (SSANode ssaNode in pair.Value) {
-					union |= isNull.GetOrDefault(ssaNode, IsNull.Unknown);
-				}
-				return pair.Key.def.name + " is " + union.AsString();
-			}).ToArray());
-#else
-			// Detailed representation
-			HashSet<SSANode> relevantSSANodes = new HashSet<SSANode>();
-			List<string> bits = ssaNodesForSymbol.Items().ConvertAll(pair => {
-				relevantSSANodes.UnionWith(pair.Value);
-				return pair.Key.def.name + " is " + string.Join(" or ", pair.Value.ConvertAll(x => x.ToString()).ToArray());
-			});
-			bits.AddRange(isNull.Items().FindAll(pair => relevantSSANodes.Contains(pair.Key)).ConvertAll(pair => {
-				return pair.Key + " is " + pair.Value.AsString();
-			}));
-			return string.Join(", ", bits.ToArray());
-#endif
-		}
-	}
 }
 
-// Constructed so that intersection is "&" and union is "|"
-public enum IsNull
+public class FlowGraphAnalyzer
 {
-	No = 1,
-	Yes = 2,
-	Maybe = 3,
-	Unknown = 0,
+	private class Result
+	{
+		public readonly FlowNode node;
+		public readonly Knowledge knowledge;
+
+		public Result(FlowNode node, Knowledge knowledge)
+		{
+			this.node = node;
+			this.knowledge = knowledge;
+		}
+
+		public override bool Equals(object obj)
+		{
+			Result other = (Result)obj;
+			return node == other.node && knowledge.Equals(other.knowledge);
+		}
+
+		public override int GetHashCode()
+		{
+			return node.GetHashCode() + knowledge.GetHashCode();
+		}
+	}
+
+	private HashSet<Result> results = new HashSet<Result>();
+
+	private void Visit(FlowNode node, Knowledge knowledge)
+	{
+		// Memoize the results so we don't do more work than necessary. This is
+		// also required to handle loops without hanging.
+		Result result = new Result(node, knowledge);
+		if (results.Contains(result)) {
+			return;
+		}
+		results.Add(result);
+
+		// Add to the knowledge flowing through this path, but stop if flow stops
+		knowledge = knowledge.Clone();
+		if (!node.Update(knowledge)) {
+			return;
+		}
+
+		// Merge that knowledge into the total knowledge for this node
+		if (node.knowledge != null) {
+			node.knowledge.UnionWith(knowledge);
+		} else {
+			node.knowledge = knowledge.Clone();
+		}
+
+		// Propagate flow to next links
+		foreach (FlowNode next in node.next) {
+			Visit(next, knowledge);
+		}
+	}
+
+	public void Run(FlowGraphBuilder builder)
+	{
+		// Analyze all the function roots
+		foreach (FlowNode root in builder.roots) {
+			Visit(root, new Knowledge());
+		}
+	}
 }
