@@ -160,6 +160,25 @@ public class CheckNode : FlowNode
 	}
 }
 
+// Return statements block flow
+public class BlockerNode : FlowNode
+{
+	public BlockerNode(FlowNode next) : base(next)
+	{
+	}
+
+	public override bool Update(Knowledge knowledge)
+	{
+		// Always indicate no flow
+		return false;
+	}
+
+	public override string ToString()
+	{
+		return "block";
+	}
+}
+
 // The nullability knowledge that we have at any one point in the program
 public class Knowledge
 {
@@ -369,10 +388,11 @@ public class FlowGraphBuilder : DefaultVisitor
 
 	public override Null Visit(ReturnStmt node)
 	{
-		base.Visit(node);
-
 		// Return statements stop flow completely
-		Console.WriteLine("TODO: stop control flow for return statements");
+		next.Set(new BlockerNode(next.Get()));
+		next.Set(new FlowNode(next.Get()));
+		
+		base.Visit(node);
 
 		return null;
 	}

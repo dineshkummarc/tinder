@@ -122,6 +122,12 @@ void test11() {
   use(c)
   // use(d) // error
 }
+
+void test12(int? a, int? b) {
+  a = b = null
+  // use(a) // error
+  // use(b) // error
+}
 ";
 	private const string htmlMap = @"
 external {
