@@ -11,6 +11,7 @@ public class InteractiveServer
 	private const string htmlExample = htmlNullable;
 	private const string htmlNullable = @"
 external {
+  bool something()
   void use(int a)
 }
 
@@ -97,6 +98,26 @@ void test9(int? a) {
   } else {
   }
   // use(b) // warning
+}
+
+void test10(int? a) {
+  a = 1
+  while something() {
+    // use(a) // warning
+    a = null
+  }
+  // use(a) // warning
+}
+
+void test11(int? a, int? b) {
+  b = null
+  if something() {
+    a = 1
+    b = 1
+  }
+  if b != null {
+    use(a)
+  }
 }
 ";
 	private const string htmlMap = @"

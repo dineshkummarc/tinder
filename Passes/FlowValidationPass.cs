@@ -78,7 +78,7 @@ public class FlowValidationPass : DefaultVisitor
 		}
 
 		// Log the generated graph (for debugging)
-		graphText += ToDotGraph();
+		graphText += ToDotGraph(node.name);
 
 		inFunc = false;
 		return null;
@@ -231,17 +231,20 @@ public class FlowValidationPass : DefaultVisitor
 		}
 
 		// Calculate flow for the test expression
+		InsertLabel("before if");
 		node.test.Accept(this);
 		Pair testPair = currentPair;
 
 		// Propagate true flow down the then branch
 		currentPair = new Pair(testPair.trueNode);
+		InsertLabel("then");
 		node.thenBlock.Accept(this);
 		Pair thenPair = currentPair;
 		
 		// Propagate false flow down the else branch
 		currentPair = new Pair(testPair.falseNode);
 		if (node.elseBlock != null) {
+			InsertLabel("else");
 			node.elseBlock.Accept(this);
 		}
 		Pair elsePair = currentPair;
@@ -249,12 +252,18 @@ public class FlowValidationPass : DefaultVisitor
 		// Unify flow from the two branches
 		FlowNode joinNode = Join(thenPair.trueNode, elsePair.trueNode);
 		currentPair = new Pair(joinNode);
+		InsertLabel("after if");
 
 		return null;
 	}
 
 	public override Null Visit(CastExpr node)
 	{
+		// Don't do analysis outside functions
+		if (!inFunc) {
+			return base.Visit(node);
+		}
+
 		base.Visit(node);
 
 		// Check for provably invalid dereferences
@@ -269,6 +278,15 @@ public class FlowValidationPass : DefaultVisitor
 		}
 
 		return null;
+	}
+
+	private void InsertLabel(string text)
+	{
+#if false
+		if (currentPair.trueNode != null) {
+			currentPair = new Pair(Record(new LabelNode(text, currentPair.trueNode)));
+		}
+#endif
 	}
 
 	private IsNull IsNullForSymbol(Symbol symbol)
@@ -349,15 +367,18 @@ public class FlowValidationPass : DefaultVisitor
 		return node;
 	}
 
-	private string ToDotGraph()
+	private string ToDotGraph(string name)
 	{
 		Dictionary<FlowNode, int> ids = new Dictionary<FlowNode, int>();
-		string text = "";
+		string text = "  subgraph cluster" + nextID++ + " {\n";
+		text += "    label = " + name.ToQuotedString() + ";\n";
 		foreach (FlowNode node in currentNodes) {
 			int id = ids[node] = nextID++;
 			string label;
 			if (node is RootNode) {
 				label = "root";
+			} else if (node is LabelNode) {
+				label = ((LabelNode)node).text;
 			} else if (node is JoinNode) {
 				label = "join";
 			} else if (node is SSANode) {
@@ -368,15 +389,15 @@ public class FlowValidationPass : DefaultVisitor
 				continue;
 			}
 			Knowledge knowledge = KnowledgeForNode(node);
-			label += "\nknowledge: " + (knowledge != null ? knowledge.ToString() : "impossible");
-			text += "  n" + id + " [label = " + label.ToQuotedString() + "];\n";
+			label += "\n" + (knowledge != null ? knowledge.ToString() : "impossible");
+			text += "    n" + id + " [label = " + label.ToQuotedString() + "];\n";
 		}
 		foreach (FlowNode node in currentNodes) {
 			foreach (FlowNode parent in node.parents) {
-				text += "  n" + ids[parent] + " -> n" + ids[node] + ";\n";
+				text += "    n" + ids[parent] + " -> n" + ids[node] + ";\n";
 			}
 		}
-		return text;
+		return text + "  }\n";
 	}
 
 	// A tuple of two FlowNode instances, used to handle building graphs from
@@ -414,6 +435,12 @@ public class FlowValidationPass : DefaultVisitor
 		public FlowNode(List<FlowNode> parents)
 		{
 			this.parents = parents;
+
+			foreach (FlowNode parent in parents) {
+				if (parent == null) {
+					throw new Exception("null parents are not allowed");
+				}
+			}
 		}
 
 		public virtual Knowledge AddTo(Knowledge knowledge)
@@ -492,6 +519,16 @@ public class FlowValidationPass : DefaultVisitor
 	{
 		public JoinNode(FlowNode left, FlowNode right) : base(new List<FlowNode> { left, right })
 		{
+		}
+	}
+
+	private class LabelNode : FlowNode
+	{
+		public string text;
+
+		public LabelNode(string text, FlowNode parent) : base(new List<FlowNode> { parent })
+		{
+			this.text = text;
 		}
 	}
 	
@@ -594,13 +631,27 @@ public class FlowValidationPass : DefaultVisitor
 
 		public override string ToString()
 		{
+#if false
+			// Simpler representation
+			return string.Join(", ", ssaNodesForSymbol.Items().ConvertAll(pair => {
+				IsNull union = IsNull.Unknown;
+				foreach (SSANode ssaNode in pair.Value) {
+					union |= isNull.GetOrDefault(ssaNode, IsNull.Unknown);
+				}
+				return pair.Key.def.name + " is " + union.AsString();
+			}).ToArray());
+#else
+			// Detailed representation
+			HashSet<SSANode> relevantSSANodes = new HashSet<SSANode>();
 			List<string> bits = ssaNodesForSymbol.Items().ConvertAll(pair => {
-				return pair.Key.def.name + " is " + string.Join(", ", pair.Value.ConvertAll(x => x.ToString()).ToArray());
+				relevantSSANodes.UnionWith(pair.Value);
+				return pair.Key.def.name + " is " + string.Join(" or ", pair.Value.ConvertAll(x => x.ToString()).ToArray());
 			});
-			bits.AddRange(isNull.Items().ConvertAll(pair => {
+			bits.AddRange(isNull.Items().FindAll(pair => relevantSSANodes.Contains(pair.Key)).ConvertAll(pair => {
 				return pair.Key + " is " + pair.Value.AsString();
 			}));
 			return string.Join(", ", bits.ToArray());
+#endif
 		}
 	}
 }
