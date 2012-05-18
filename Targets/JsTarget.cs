@@ -199,6 +199,7 @@ public class JsTargetVisitor : Visitor<string>
 		while (true) {
 			text += "if (" + node.test.Accept(this).StripParens() + ") " + node.thenBlock.Accept(this);
 			if (node.elseBlock == null) {
+				text += "\n";
 				break;
 			}
 			text += " else ";

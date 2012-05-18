@@ -17,13 +17,13 @@ external {
 
 int test0() {
   int? a
-  // return a // error
+  // return a // warning
   return 0
 }
 
 void test1(int? a) {
   if a == null {
-    // use(a) // error
+    // use(a) // warning
   } else {
     use(a)
   }
@@ -74,7 +74,7 @@ void test7(int? a) {
   } else {
     b = a
   }
-  // use(b) // error
+  // use(b) // warning
 }
 
 int test8(int? a) {
@@ -120,13 +120,13 @@ void test11() {
     // else if d == null { d = 4 } // warning
   }
   use(c)
-  // use(d) // error
+  // use(d) // warning
 }
 
 void test12(int? a, int? b) {
   a = b = null
-  // use(a) // error
-  // use(b) // error
+  // use(a) // warning
+  // use(b) // warning
 }
 ";
 	private const string htmlMap = @"

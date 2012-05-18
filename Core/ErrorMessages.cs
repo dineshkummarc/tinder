@@ -193,18 +193,18 @@ public static class ErrorMessages
 		log.Error(location, "\"" + keyword + "\" is not allowed here");
 	}
 
-	public static void ErrorNullDereference(this Log log, Location location, string name)
-	{
-		log.Error(location, "dereference of definitely null value \"" + name + "\"");
-	}
-	
 	public static void WarningDeadCode(this Log log, Location location)
 	{
 		log.Warning(location, "dead code");
 	}
-
+	
+	public static void WarningNullDereference(this Log log, Location location, string name)
+	{
+		log.Warning(location, "dereference of definitely null value" + (name != null ? " \"" + name + "\"" : ""));
+	}
+	
 	public static void WarningNullableDereference(this Log log, Location location, string name)
 	{
-		log.Warning(location, "dereference of possibly null value \"" + name + "\"");
+		log.Warning(location, "dereference of possibly null value" + (name != null ? " \"" + name + "\"" : ""));
 	}
 }

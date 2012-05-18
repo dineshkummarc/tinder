@@ -62,6 +62,8 @@ public class FlowValidationPass : DefaultVisitor
 
 	public override Null Visit(CastExpr node)
 	{
+		base.Visit(node);
+
 		// Check for provably invalid dereferences of local variables
 		if (node.value is IdentExpr) {
 			IdentExpr identExpr = (IdentExpr)node.value;
@@ -70,12 +72,24 @@ public class FlowValidationPass : DefaultVisitor
 				if (flowNode.knowledge != null) {
 					IsNull isNull = flowNode.knowledge.isNull.GetOrDefault(identExpr.symbol, IsNull.Maybe);
 					if (isNull == IsNull.Yes) {
-						log.ErrorNullDereference(node.location, identExpr.name);
+						log.WarningNullDereference(node.location, identExpr.name);
 					} else if (isNull == IsNull.Maybe) {
 						log.WarningNullableDereference(node.location, identExpr.name);
 					}
+					return null;
 				}
 			}
+			
+			// Be conservative and warn about all other dereferences
+			if ((node.value.computedType is NullableType) && !(node.computedType is NullableType)) {
+				log.WarningNullableDereference(node.location, identExpr.name);
+				return null;
+			}
+		}
+
+		// Be conservative and warn about all other dereferences
+		if ((node.value.computedType is NullableType) && !(node.computedType is NullableType)) {
+			log.WarningNullableDereference(node.location, null);
 		}
 
 		return null;
